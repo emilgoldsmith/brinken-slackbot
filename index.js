@@ -5,6 +5,16 @@ const sheetdb = require("sheetdb-node");
 const slackApp = new App({
   token: process.env.SLACK_BOT_TOKEN,
   signingSecret: process.env.SLACK_SIGNING_SECRET,
+  customRoutes: [
+    {
+      path: "/keep-alive",
+      method: ["GET"],
+      handler: (req, res) => {
+        res.writeHead(200);
+        res.end();
+      },
+    },
+  ],
 });
 
 const sheetDbClient = sheetdb({
@@ -13,7 +23,7 @@ const sheetDbClient = sheetdb({
   auth_password: process.env.SHEET_DB_PASSWORD,
 });
 
-SHEET_NAME = "Sheet1";
+BEBOERE_SHEET_NAME = "Beboere";
 
 (async () => {
   const port = process.env.PORT || 3000;
@@ -21,14 +31,4 @@ SHEET_NAME = "Sheet1";
   await slackApp.start(port);
 
   console.log("⚡️ Bolt app is running on port " + port + "!");
-
-  await slackApp.client.chat.postMessage({
-    channel: "slackbot-test",
-    text: "testing 1, 2, 3",
-  });
-
-  const response = await sheetDbClient.create([
-    { id: "INCREMENT", name: "test", time: "TIMESTAMP" },
-  ]);
-  console.log(response);
 })();
