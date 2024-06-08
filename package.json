@@ -6,7 +6,8 @@
   "author": "Emil Goldsmith Olesen <emilgoldsmith94@gmail.com>",
   "license": "MIT",
   "dependencies": {
-    "@slack/bolt": "^3.18.0"
+    "@slack/bolt": "^3.18.0",
+    "sheetdb-node": "^0.0.12"
   },
   "scripts": {
     "start": "node index.js"
