@@ -1,0 +1,11 @@
+{
+  "name": "brinken-slackbot",
+  "version": "1.0.0",
+  "main": "index.js",
+  "repository": "git@github.com:emilgoldsmith/brinken-slackbot.git",
+  "author": "Emil Goldsmith Olesen <emilgoldsmith94@gmail.com>",
+  "license": "MIT",
+  "dependencies": {
+    "@slack/bolt": "^3.18.0"
+  }
+}
