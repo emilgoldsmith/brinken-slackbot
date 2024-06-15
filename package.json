@@ -7,6 +7,8 @@
   "license": "MIT",
   "dependencies": {
     "@slack/bolt": "^3.18.0",
+    "lodash": "^4.17.21",
+    "luxon": "^3.4.4",
     "sheetdb-node": "^0.0.12"
   },
   "scripts": {

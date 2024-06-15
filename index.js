@@ -1,5 +1,7 @@
 const { App } = require("@slack/bolt");
 const sheetdb = require("sheetdb-node");
+const _ = require("lodash");
+const { DateTime } = require("luxon");
 
 // Initializes your app with your bot token and signing secret
 const slackApp = new App({
@@ -31,4 +33,26 @@ BEBOERE_SHEET_NAME = "Beboere";
   await slackApp.start(port);
 
   console.log("⚡️ Bolt app is running on port " + port + "!");
+
+  await handleBirthday();
 })();
+
+async function handleBirthday(targetBirthday) {
+  const members = JSON.parse(
+    await sheetDbClient.read({ sheet: BEBOERE_SHEET_NAME })
+  );
+
+  const withSortableBirthdays = members
+    .filter((x) => x.fødselsdag)
+    .map((x) => {
+      const birthdayDate = DateTime.fromISO(x.fødselsdag);
+      return {
+        ...x,
+        sortableBirthday: birthdayDate.toFormat("MM-dd"),
+      };
+    });
+
+  console.log(withSortableBirthdays);
+
+  // slackApp.client.channels.create({name: })
+}
