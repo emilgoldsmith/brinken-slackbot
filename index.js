@@ -57,7 +57,7 @@ slackApp.command("/brinkenbot-test", async ({ command, ack, respond }) => {
       text: `Her er dine muligheder for tests du kan bede om:
 
 1. \`/brinkenbot-test føds uge [MM-DD]\` så for eksempel \`/brinkenbot-test føds uge 05-26\`
-2. \`/brinkenbot-test føds dag [kanal-navn]`,
+2. \`/brinkenbot-test føds dag [kanal-navn]\``,
     });
     return;
   }
@@ -96,9 +96,9 @@ slackApp.command("/brinkenbot-test", async ({ command, ack, respond }) => {
       } else {
         await respond({
           text:
-            "Inkorrekt føds underkommando " +
+            "Inkorrekt føds underkommando `" +
             subCommand +
-            ", eneste muligheder er `uge` eller `dag`",
+            "`, eneste muligheder er `uge` eller `dag`",
         });
         return;
       }
@@ -107,7 +107,7 @@ slackApp.command("/brinkenbot-test", async ({ command, ack, respond }) => {
 
     default: {
       await respond({
-        text: `Uventet test ${testName}, eneste understøttede mulighed p.t. er \`føds\``,
+        text: `Uventet test \`${testName}\`, eneste understøttede mulighed p.t. er \`føds\``,
       });
     }
   }
@@ -144,9 +144,8 @@ async function handleWeekBeforeBirthday(
   targetBirthdayMMDD,
   channelNameSuffix = ""
 ) {
-  const { birthdayPeople, sortedBirthdays, members } = await getBirthdayPeople(
-    targetBirthdayMMDD
-  );
+  const { birthdayPeople, sortedBirthdays, members, birthdayYear } =
+    await getBirthdayPeople(targetBirthdayMMDD);
 
   if (birthdayPeople.length <= 0) return;
 
@@ -186,15 +185,9 @@ async function handleWeekBeforeBirthday(
     (m) => !birthdayPeople.map((p) => p.id).includes(m.id)
   );
 
-  let birthdayYear = DateTime.now().year;
-  if (
-    DateTime.fromISO(`${birthdayYear}-${targetBirthdayMMDD}`) < DateTime.now()
-  ) {
-    birthdayYear += 1;
-  }
-
   const birthdayChannelName = buildBirthdayChannelName(
     birthdayPeople,
+    birthdayYear,
     channelNameSuffix
   );
 
@@ -237,12 +230,14 @@ async function handleDayBeforeBirthday(
   if (channelNameOverride !== null) {
     birthdayChannelName = channelNameOverride;
   } else {
-    const { birthdayPeople } = await getBirthdayPeople(targetBirthdayMMDD);
+    const { birthdayPeople, birthdayYear } = await getBirthdayPeople(
+      targetBirthdayMMDD
+    );
     if (birthdayPeople.length <= 0) return;
 
     birthdayChannelName = buildBirthdayChannelName(
       birthdayPeople,
-      channelNameSuffix
+      birthdayYear
     );
   }
 
@@ -273,10 +268,21 @@ async function getBirthdayPeople(targetBirthdayMMDD) {
     (x) => targetBirthdayMMDD === x.sortableBirthday
   );
 
-  return { birthdayPeople, sortedBirthdays, members };
+  let birthdayYear = DateTime.now().year;
+  if (
+    DateTime.fromISO(`${birthdayYear}-${targetBirthdayMMDD}`) < DateTime.now()
+  ) {
+    birthdayYear += 1;
+  }
+
+  return { birthdayPeople, sortedBirthdays, members, birthdayYear };
 }
 
-function buildBirthdayChannelName(birthdayPeople, channelNameSuffix) {
+function buildBirthdayChannelName(
+  birthdayPeople,
+  birthdayYear,
+  channelNameSuffix
+) {
   return (
     birthdayPeople.map((x) => x.navn.toLowerCase()).join("-") +
     `-fødselsdag-${birthdayYear}` +
