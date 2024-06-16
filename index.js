@@ -2,6 +2,16 @@ const { App } = require("@slack/bolt");
 const sheetdb = require("sheetdb-node");
 const _ = require("lodash");
 const { DateTime } = require("luxon");
+const crypto = require("crypto");
+
+const sheetDbClient = sheetdb({
+  address: "jp1hjy317fz23",
+  auth_login: process.env.SHEET_DB_LOGIN,
+  auth_password: process.env.SHEET_DB_PASSWORD,
+});
+
+const BEBOERE_SHEET_NAME = "Beboere";
+const SLACKBOT_TEST_CHANNEL = "slackbot-test";
 
 // Initializes your app with your bot token and signing secret
 const slackApp = new App({
@@ -16,17 +26,25 @@ const slackApp = new App({
         res.end();
       },
     },
+    {
+      path: "/handle-day",
+      method: ["GET"],
+      handler: (req, res) => {
+        handleDay().catch((e) => {
+          const errorMessage = e instanceof Error ? e.stack : JSON.stringify(e);
+          slackApp.client.chat
+            .postMessage({
+              channel: SLACKBOT_TEST_CHANNEL,
+              text: `Error occurred during handle day: ${errorMessage}`,
+            })
+            .catch(console.error);
+        });
+        res.writeHead(200);
+        res.end();
+      },
+    },
   ],
 });
-
-const sheetDbClient = sheetdb({
-  address: "jp1hjy317fz23",
-  auth_login: process.env.SHEET_DB_LOGIN,
-  auth_password: process.env.SHEET_DB_PASSWORD,
-});
-
-const BEBOERE_SHEET_NAME = "Beboere";
-const SLACKBOT_TEST_CHANNEL = "slackbot-test";
 
 (async () => {
   const port = process.env.PORT || 3000;
@@ -36,26 +54,33 @@ const SLACKBOT_TEST_CHANNEL = "slackbot-test";
   console.log("⚡️ Bolt app is running on port " + port + "!");
 })();
 
-async function handleBirthday(targetBirthdayMMDD) {
-  const members = JSON.parse(
-    await sheetDbClient.read({ sheet: BEBOERE_SHEET_NAME })
+async function handleDay() {
+  await slackApp.client.chat.postMessage({
+    channel: SLACKBOT_TEST_CHANNEL,
+    text: "Starting handle day",
+  });
+
+  await handleWeekBeforeBirthday(
+    DateTime.now().plus({ weeks: 1 }).toFormat("MM-dd")
+  );
+  await handleDayBeforeBirthday(
+    DateTime.now().plus({ days: 1 }).toFormat("MM-dd")
   );
 
-  const sortedBirthdays = _.chain(members)
-    .filter((x) => x.fødselsdag)
-    .map((x) => {
-      const birthdayDate = DateTime.fromISO(x.fødselsdag);
-      return {
-        ...x,
-        sortableBirthday: birthdayDate.toFormat("MM-dd"),
-      };
-    })
-    .sortBy(["sortableBirthday"])
-    .value();
+  await slackApp.client.chat.postMessage({
+    channel: SLACKBOT_TEST_CHANNEL,
+    text: "Completed handle day successfully",
+  });
+}
 
-  const birthdayPeople = sortedBirthdays.filter(
-    (x) => targetBirthdayMMDD === x.sortableBirthday
+async function handleWeekBeforeBirthday(
+  targetBirthdayMMDD,
+  channelNameSuffix = ""
+) {
+  const { birthdayPeople, sortedBirthdays, members } = await getBirthdayPeople(
+    targetBirthdayMMDD
   );
+
   if (birthdayPeople.length <= 0) return;
 
   let lowestBirthdayIndex = sortedBirthdays.findIndex(
@@ -101,9 +126,10 @@ async function handleBirthday(targetBirthdayMMDD) {
     birthdayYear += 1;
   }
 
-  const birthdayChannelName = `${birthdayPeople
-    .map((x) => x.navn.toLowerCase())
-    .join("-")}-fødselsdag-${birthdayYear}-5`;
+  const birthdayChannelName = buildBirthdayChannelName(
+    birthdayPeople,
+    channelNameSuffix
+  );
 
   const { channel: birthdayChannel } =
     await slackApp.client.conversations.create({
@@ -134,6 +160,55 @@ async function handleBirthday(targetBirthdayMMDD) {
       responsiblePeople.map((x) => `<@${x["slack-id"]}>`)
     )} der er hovedansvarlig(e) for fødselsdags morgenmad`,
   });
+}
+
+async function handleDayBeforeBirthday(
+  targetBirthdayMMDD,
+  channelNameSuffix = ""
+) {
+  const { birthdayPeople } = getBirthdayPeople(targetBirthdayMMDD);
+  if (birthdayPeople.length <= 0) return;
+
+  const birthdayChannelName = buildBirthdayChannelName(
+    birthdayPeople,
+    channelNameSuffix
+  );
+
+  await slackApp.client.chat.postMessage({
+    channel: birthdayChannelName,
+    text: "Så er det i morgen der er fødselsdag <!channel>! ",
+  });
+}
+
+async function getBirthdayPeople(targetBirthdayMMDD) {
+  const members = JSON.parse(
+    await sheetDbClient.read({ sheet: BEBOERE_SHEET_NAME })
+  );
+
+  const sortedBirthdays = _.chain(members)
+    .filter((x) => x.fødselsdag)
+    .map((x) => {
+      const birthdayDate = DateTime.fromISO(x.fødselsdag);
+      return {
+        ...x,
+        sortableBirthday: birthdayDate.toFormat("MM-dd"),
+      };
+    })
+    .sortBy(["sortableBirthday"])
+    .value();
+
+  const birthdayPeople = sortedBirthdays.filter(
+    (x) => targetBirthdayMMDD === x.sortableBirthday
+  );
+  return { birthdayPeople, sortedBirthdays, members };
+}
+
+function buildBirthdayChannelName(birthdayPeople, channelNameSuffix) {
+  return (
+    birthdayPeople.map((x) => x.navn.toLowerCase()).join("-") +
+    `-fødselsdag-${birthdayYear}` +
+    (channelNameSuffix ? "-" + channelNameSuffix : "")
+  );
 }
 
 function naturalLanguageList(items) {
