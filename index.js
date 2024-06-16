@@ -134,12 +134,12 @@ async function handleDay() {
     text: "Starting handle day",
   });
 
-  await handleWeekBeforeBirthday(
-    DateTime.now().plus({ weeks: 1 }).toFormat("MM-dd")
-  );
-  await handleDayBeforeBirthday(
-    DateTime.now().plus({ days: 1 }).toFormat("MM-dd")
-  );
+  const inAWeek = DateTime.now().plus({ weeks: 1 }).toFormat("MM-dd");
+  console.log(inAWeek);
+  await handleWeekBeforeBirthday(inAWeek);
+  const inADay = DateTime.now().plus({ days: 1 }).toFormat("MM-dd");
+  console.log(inADay);
+  await handleDayBeforeBirthday(inADay);
 
   await slackApp.client.chat.postMessage({
     channel: SLACKBOT_TEST_CHANNEL,
