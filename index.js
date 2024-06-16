@@ -166,7 +166,7 @@ async function handleDayBeforeBirthday(
   targetBirthdayMMDD,
   channelNameSuffix = ""
 ) {
-  const { birthdayPeople } = getBirthdayPeople(targetBirthdayMMDD);
+  const { birthdayPeople } = await getBirthdayPeople(targetBirthdayMMDD);
   if (birthdayPeople.length <= 0) return;
 
   const birthdayChannelName = buildBirthdayChannelName(
@@ -200,6 +200,7 @@ async function getBirthdayPeople(targetBirthdayMMDD) {
   const birthdayPeople = sortedBirthdays.filter(
     (x) => targetBirthdayMMDD === x.sortableBirthday
   );
+
   return { birthdayPeople, sortedBirthdays, members };
 }
 
