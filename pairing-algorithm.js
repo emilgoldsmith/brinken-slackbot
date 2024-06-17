@@ -1,3 +1,4 @@
+const _ = require('lodash');
 // https://math.stackexchange.com/questions/34328/how-to-rotate-n-individuals-at-a-dinner-party-so-that-every-guest-meets-every-ot
 const n = parseInt(process.argv[2])
 
@@ -50,13 +51,22 @@ for (let i = 0; i < matches.length; i++) {
 console.log(minDist);
 console.log(maxDist);
 
-const numFirsts = {};
-for (let i = 0; i < n; i++) numFirsts[i] = 0;
-for (const x of matches) {
-  if (numFirsts[x[0]] > numFirsts[x[1]]) {
-    [x[0], x[1]] = [x[1], x[0]];
+let numFirsts = {};
+let iterations = 0;
+let success = false;
+while (!success) {
+  iterations++;
+  numFirsts = {};
+  for (let i = 0; i < n; i++) numFirsts[i] = 0;
+  for (const x of matches) {
+    if (Math.random() > 0.5) {
+      [x[0], x[1]] = [x[1], x[0]];
+    }
+    numFirsts[x[0]]++;
   }
-  numFirsts[x[0]]++;
+
+  success = _.every(numFirsts, (value) => value === 4 || value === 5)
 }
 
 console.log(JSON.stringify(numFirsts, null, 4))
+console.log(iterations)
