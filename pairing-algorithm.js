@@ -13,15 +13,15 @@ for (let i = 0; i < n / 2; i++) {
   b.push(i + n/2);
 }
 
+matches = [];
 
 
 for (let i = 0; i < n-1; i++) {
   for (let j = 0; j < n / 2; j++) {
-    console.log(t[j], b[j]);
+    matches.push([t[j], b[j]]);
     seen[t[j]][b[j]]++;
     seen[b[j]][t[j]]++;
   }
-  console.log("DONE")
 
   const xt = t.pop();
   const xb = b.shift();
@@ -32,3 +32,20 @@ for (let i = 0; i < n-1; i++) {
 }
 
 console.log(JSON.stringify(seen, null, 4));
+
+const lastSeen = {}
+let minDist = n;
+let maxDist = -1;
+for (let i = 0; i < matches.length; i++) {
+  for (const x of matches[i]) {
+    if (lastSeen[x] !== undefined) {
+      console.log(i - lastSeen[x], x, matches[i]);
+      minDist = Math.min(minDist, i - lastSeen[x]);
+      maxDist = Math.max(maxDist, i - lastSeen[x]);
+    }
+    lastSeen[x] = i;
+  }
+}
+
+console.log(minDist);
+console.log(maxDist);
