@@ -49,3 +49,14 @@ for (let i = 0; i < matches.length; i++) {
 
 console.log(minDist);
 console.log(maxDist);
+
+const numFirsts = {};
+for (let i = 0; i < n; i++) numFirsts[i] = 0;
+for (const x of matches) {
+  if (numFirsts[x[0]] > numFirsts[x[1]]) {
+    [x[0], x[1]] = [x[1], x[0]];
+  }
+  numFirsts[x[0]]++;
+}
+
+console.log(JSON.stringify(numFirsts, null, 4))
