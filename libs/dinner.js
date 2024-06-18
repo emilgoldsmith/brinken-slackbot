@@ -116,6 +116,15 @@ export const dinnerActionListeners = [
                 style: "primary",
                 url,
               },
+              {
+                type: "button",
+                text: {
+                  type: "plain_text",
+                  text: "Skjul besked",
+                },
+                style: "danger",
+                action_id: "delete-message",
+              },
             ],
           },
         ],
