@@ -45,159 +45,219 @@ function sendDinnerMessage({ text, blocks, channel }) {
  */
 export const dinnerActionListeners = [
   [
+    "see-dinner-schedule",
+    async ({ ack, respond }) => {
+      await ack();
+      await handlerDinnerScheduleActionResponse({
+        respond,
+        startDate: DateTime.now(),
+        endDate: DateTime.now().plus({ weeks: 4 }),
+        updateOriginal: false,
+      });
+    },
+  ],
+  [
+    "show-more-dinner-schedule",
+    async ({ ack, respond, action }) => {
+      await ack();
+      await handlerDinnerScheduleActionResponse({
+        respond,
+        startDate: DateTime.now(),
+        endDate: DateTime.fromISO(action.value).plus({ weeks: 4 }),
+        updateOriginal: true,
+      });
+    },
+  ],
+  [
     "hide-dinner-schedule",
     async ({ ack, respond }) => {
       await ack();
       await respond({ delete_original: true });
     },
   ],
-  [
-    "see-dinner-schedule",
-    async ({ ack, respond }) => {
-      await ack();
-
-      const members = JSON.parse(
-        await sheetDbClient.read({ sheet: BEBOERE_SHEET_NAME })
-      );
-
-      const dbRows = JSON.parse(
-        await sheetDbClient.read({
-          sheet: TORSDAGS_TALLERKEN_SHEET_NAME,
-          search: {
-            dato: ">=" + DateTime.now().toFormat("yyyy-MM-dd"),
-          },
-        })
-      );
-
-      const headChefJoined = lodashJoins.hashInnerJoin(
-        members,
-        (x) => x.id,
-        dbRows,
-        (x) => x.hovedkok
-      );
-      const formattedObjects = lodashJoins.hashInnerJoin(
-        members,
-        (x) => x.id,
-        headChefJoined,
-        (x) => x.kokkeassistent,
-        (memb, headChef) => ({
-          headChef: headChef["slack-id"],
-          assistent: memb["slack-id"],
-          date: DateTime.fromISO(headChef.dato)
-            .setLocale("da-dk")
-            .toLocaleString(DateTime.DATE_FULL),
-        })
-      );
-
-      const hideScheduleButton = {
-        type: "actions",
-        elements: [
-          {
-            type: "button",
-            text: {
-              type: "plain_text",
-              text: "Skjul skema",
-            },
-            style: "danger",
-            action_id: "hide-dinner-schedule",
-          },
-        ],
-      };
-
-      await respond({
-        response_type: "ephemeral",
-        replace_original: false,
-        text: formattedObjects
-          .map(
-            (x) =>
-              `${x.date}: head chef <@${x.headChef}> assistent <@${x.assistent}>`
-          )
-          .join("\n"),
-        blocks: [
-          {
-            type: "header",
-            text: {
-              type: "plain_text",
-              text: "Torsdagstallerken Program",
-            },
-          },
-          hideScheduleButton,
-          {
-            type: "rich_text",
-            elements: formattedObjects.flatMap((x) => [
-              {
-                type: "rich_text_list",
-                style: "bullet",
-                elements: [
-                  {
-                    type: "rich_text_section",
-                    elements: [
-                      {
-                        type: "text",
-                        text: `${x.date}: `,
-                        style: {
-                          bold: true,
-                        },
-                      },
-                    ],
-                  },
-                ],
-              },
-              {
-                type: "rich_text_list",
-                style: "bullet",
-                indent: 1,
-                elements: [
-                  {
-                    type: "rich_text_section",
-                    elements: [
-                      {
-                        type: "emoji",
-                        name: "chef-parrot",
-                      },
-                      {
-                        type: "text",
-                        text: " Head Chef: ",
-                        style: {
-                          bold: true,
-                        },
-                      },
-                      {
-                        type: "user",
-                        user_id: x.headChef,
-                      },
-                    ],
-                  },
-                  {
-                    type: "rich_text_section",
-                    elements: [
-                      {
-                        type: "emoji",
-                        name: "cook",
-                      },
-                      {
-                        type: "text",
-                        text: " Souschef: ",
-                        style: {
-                          bold: true,
-                        },
-                      },
-                      {
-                        type: "user",
-                        user_id: x.assistent,
-                      },
-                    ],
-                  },
-                ],
-              },
-            ]),
-          },
-          hideScheduleButton,
-        ],
-      });
-    },
-  ],
 ];
+
+/**
+ * @param {object} obj
+ * @param {slackBolt.respondFn} obj.respond
+ * @param {DateTime} obj.startDate
+ * @param {DateTime} obj.endDate
+ * @param {boolean} obj.updateOriginal
+ */
+async function handlerDinnerScheduleActionResponse({
+  respond,
+  startDate,
+  endDate,
+  updateOriginal,
+}) {
+  const members = JSON.parse(
+    await sheetDbClient.read({ sheet: BEBOERE_SHEET_NAME })
+  );
+
+  const allDbRows = JSON.parse(
+    await sheetDbClient.read({
+      sheet: TORSDAGS_TALLERKEN_SHEET_NAME,
+      sort_by: "dato",
+      sort_order: "asc",
+      sort_method: "date",
+      sort_date_format: "Y-m-d",
+    })
+  );
+
+  const targetDbRows = allDbRows.filter(
+    (x) =>
+      x.dato >= startDate.toFormat("yyyy-MM-dd") &&
+      x.dato <= endDate.toFormat("yyyy-MM-dd")
+  );
+
+  const hasMore =
+    allDbRows.find((x) => x.dato > endDate.toFormat("yyyy-MM-dd")) !==
+    undefined;
+
+  const headChefJoined = lodashJoins.hashInnerJoin(
+    members,
+    (x) => x.id,
+    targetDbRows,
+    (x) => x.hovedkok
+  );
+  const formattedObjects = lodashJoins.hashInnerJoin(
+    members,
+    (x) => x.id,
+    headChefJoined,
+    (x) => x.kokkeassistent,
+    (memb, headChef) => ({
+      headChef: headChef["slack-id"],
+      assistent: memb["slack-id"],
+      date: DateTime.fromISO(headChef.dato)
+        .setLocale("da-dk")
+        .toLocaleString(DateTime.DATE_FULL),
+    })
+  );
+
+  function buildHideScheduleButton(extraButtons = []) {
+    return {
+      type: "actions",
+      elements: [
+        {
+          type: "button",
+          text: {
+            type: "plain_text",
+            text: "Skjul skema",
+          },
+          style: "danger",
+          action_id: "hide-dinner-schedule",
+        },
+        ...extraButtons,
+      ],
+    };
+  }
+
+  await respond({
+    response_type: "ephemeral",
+    replace_original: updateOriginal,
+    text: formattedObjects
+      .map(
+        (x) =>
+          `${x.date}: head chef <@${x.headChef}> assistent <@${x.assistent}>`
+      )
+      .join("\n"),
+    blocks: [
+      {
+        type: "header",
+        text: {
+          type: "plain_text",
+          text: "Torsdagstallerken Program",
+        },
+      },
+      buildHideScheduleButton(),
+      {
+        type: "rich_text",
+        elements: formattedObjects.flatMap((x) => [
+          {
+            type: "rich_text_list",
+            style: "bullet",
+            elements: [
+              {
+                type: "rich_text_section",
+                elements: [
+                  {
+                    type: "text",
+                    text: `${x.date}: `,
+                    style: {
+                      bold: true,
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            type: "rich_text_list",
+            style: "bullet",
+            indent: 1,
+            elements: [
+              {
+                type: "rich_text_section",
+                elements: [
+                  {
+                    type: "emoji",
+                    name: "chef-parrot",
+                  },
+                  {
+                    type: "text",
+                    text: " Head Chef: ",
+                    style: {
+                      bold: true,
+                    },
+                  },
+                  {
+                    type: "user",
+                    user_id: x.headChef,
+                  },
+                ],
+              },
+              {
+                type: "rich_text_section",
+                elements: [
+                  {
+                    type: "emoji",
+                    name: "cook",
+                  },
+                  {
+                    type: "text",
+                    text: " Souschef: ",
+                    style: {
+                      bold: true,
+                    },
+                  },
+                  {
+                    type: "user",
+                    user_id: x.assistent,
+                  },
+                ],
+              },
+            ],
+          },
+        ]),
+      },
+      buildHideScheduleButton(
+        hasMore
+          ? [
+              {
+                type: "button",
+                text: {
+                  type: "plain_text",
+                  text: "Vis flere",
+                },
+                action_id: "show-more-dinner-schedule",
+                value: endDate.toISO(),
+              },
+            ]
+          : []
+      ),
+    ],
+  });
+}
 
 /**
  * @argument thursdayLuxonDateTime {DateTime}
