@@ -34,6 +34,14 @@ function sendDinnerMessage({ text, blocks, channel }) {
             },
             action_id: "see-dinner-schedule",
           },
+          {
+            type: "button",
+            text: {
+              type: "plain_text",
+              text: "Ret skema",
+            },
+            action_id: "edit-dinner-schedule",
+          },
         ],
       },
     ],
@@ -69,7 +77,53 @@ export const dinnerActionListeners = [
     },
   ],
   [
-    "hide-dinner-schedule",
+    "edit-dinner-schedule",
+    async ({ ack, respond }) => {
+      await ack();
+      const mainText =
+        'Det kan godt være det følgende virker lidt skræmmende for en ikke teknisk person, men jeg ved du godt kan klare det, og bare rolig hvis noget går galt så fikser vi det bare igen, ingen fare overhovedet :heart:.\n\nFor at beholde så meget fleksibilitet som muligt har vi valgt at den bedste måde, trods lidt kompleksitet, er at rette direkte i vores "database." Vi har dog heldigvis bare brugt Google Sheets som vores database for at forhåbentligt gøre det så nemt som muligt at rette i. Tryk på knappen nedenfor for at gå til regnearket, hvor du først vil se den mere menneskelæselige version hvor du kan få overblik over hvordan du vil rette. Når du så rent faktisk skal rette går du over til "Torsdagstallerken" arket, dette er også tydeligt markeret i regnearket, og her kan du så lave de rent faktiske database rettelser. Computere er dumme så det er vigtigt her at du følger formatet med at bruge tal til at referere til os beboere og at datoerne er i År-Måned-Dato format, men som vi skrev ovenfor, bare stol på dig selv, det skal nok gå, og hvis noget går galt så fikser de mere tekniske personer i kollektivet det bare. Der er intet der er i fare for at blive fuldstændig ødelagt, vi kan altid finde tilbage til den tilstand den var i før.';
+      const url =
+        "https://docs.google.com/spreadsheets/d/12BjvaehXZyt2CI_rqfexB6pXbZcACS4x3iKM7xMaMOI/edit?usp=sharing&gid=451251755";
+      await respond({
+        replace_original: false,
+        response_type: "ephemeral",
+        text: `${mainText}.\n\nHer er linket: ${url}`,
+        blocks: [
+          {
+            type: "header",
+            text: {
+              type: "plain_text",
+              text: "Sådan retter man i programmet:",
+            },
+          },
+          {
+            type: "section",
+            text: {
+              type: "plain_text",
+              emoji: true,
+              text: mainText,
+            },
+          },
+          {
+            type: "actions",
+            elements: [
+              {
+                type: "button",
+                text: {
+                  type: "plain_text",
+                  text: "Gå til regneark",
+                },
+                style: "primary",
+                url,
+              },
+            ],
+          },
+        ],
+      });
+    },
+  ],
+  [
+    "delete-message",
     async ({ ack, respond }) => {
       await ack();
       await respond({ delete_original: true });
@@ -145,7 +199,7 @@ async function handlerDinnerScheduleActionResponse({
             text: "Skjul skema",
           },
           style: "danger",
-          action_id: "hide-dinner-schedule",
+          action_id: "delete-message",
         },
         ...extraButtons,
       ],
