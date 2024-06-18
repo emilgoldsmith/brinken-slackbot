@@ -45,6 +45,13 @@ function sendDinnerMessage({ text, blocks, channel }) {
  */
 export const dinnerActionListeners = [
   [
+    "hide-dinner-schedule",
+    async ({ ack, respond }) => {
+      await ack();
+      await respond({ delete_original: true });
+    },
+  ],
+  [
     "see-dinner-schedule",
     async ({ ack, respond }) => {
       await ack();
@@ -82,6 +89,21 @@ export const dinnerActionListeners = [
         })
       );
 
+      const hideScheduleButton = {
+        type: "actions",
+        elements: [
+          {
+            type: "button",
+            text: {
+              type: "plain_text",
+              text: "Skjul skema",
+            },
+            style: "danger",
+            action_id: "hide-dinner-schedule",
+          },
+        ],
+      };
+
       await respond({
         response_type: "ephemeral",
         replace_original: false,
@@ -99,6 +121,7 @@ export const dinnerActionListeners = [
               text: "Torsdagstallerken Program",
             },
           },
+          hideScheduleButton,
           {
             type: "rich_text",
             elements: formattedObjects.flatMap((x) => [
@@ -169,6 +192,7 @@ export const dinnerActionListeners = [
               },
             ]),
           },
+          hideScheduleButton,
         ],
       });
     },
