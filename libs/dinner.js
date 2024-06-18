@@ -1,7 +1,4 @@
-import {
-  richTextNaturalLanguageList,
-  stringNaturalLanguageList,
-} from "./utils.js";
+import { richTextNaturalLanguageList } from "./utils.js";
 import {
   sheetDbClient,
   BEBOERE_SHEET_NAME,
