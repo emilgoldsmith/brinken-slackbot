@@ -84,6 +84,7 @@ export const dinnerActionListeners = [
 
       await respond({
         response_type: "ephemeral",
+        replace_original: false,
         text: formattedObjects
           .map(
             (x) =>
