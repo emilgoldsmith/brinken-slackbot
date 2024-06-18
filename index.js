@@ -1,4 +1,4 @@
-const { App } = require("@slack/bolt");
+const slackBolt = require("@slack/bolt");
 const sheetdb = require("sheetdb-node");
 const _ = require("lodash");
 const lodashJoins = require("lodash-joins");
@@ -18,7 +18,7 @@ const SLACKBOT_TEST_CHANNEL = "slackbot-test";
 const THIS_BOT_USER_ID = "U07773D070B";
 
 // Initializes your app with your bot token and signing secret
-const slackApp = new App({
+const slackApp = new slackBolt.App({
   token: process.env.SLACK_BOT_TOKEN,
   signingSecret: process.env.SLACK_SIGNING_SECRET,
   customRoutes: [
@@ -339,33 +339,182 @@ async function handleThreeDaysBeforeDinner(thursdayLuxonDateTime) {
   // easy helper to change to SLACKBOT_TEST_CHANNEL if testing for example
   const channelToSendTo = TORSDAGS_TALLERKEN_CHANNEL;
 
-  await slackApp.client.chat.postMessage({
-    channel: channelToSendTo,
-    text: `> *Torsdagstallerken Yay!*
-Så er der endnu engang tre dage til torsdagstallerken! I denne uge har vi:
-
-:chef-parrot:*Head Chef:* <@${headChef}>
-:cook:*Souschef:* <@${assistent}>`,
-  });
+  /**
+   * @type {(slackBolt.Block | slackBolt.KnownBlock)[]}
+   */
+  const msgBlocks = [
+    {
+      type: "header",
+      text: {
+        type: "plain_text",
+        text: "Torsdagstallerken",
+      },
+    },
+    {
+      type: "rich_text",
+      elements: [
+        {
+          type: "rich_text_section",
+          elements: [
+            {
+              type: "text",
+              text: "Så er der endnu engang tre dage til torsdagstallerken! I denne uge har vi:\n",
+            },
+          ],
+        },
+        {
+          type: "rich_text_list",
+          style: "bullet",
+          elements: [
+            {
+              type: "rich_text_section",
+              elements: [
+                {
+                  type: "emoji",
+                  name: "chef-parrot",
+                },
+                {
+                  type: "text",
+                  text: " Head Chef: ",
+                  style: {
+                    bold: true,
+                  },
+                },
+                {
+                  type: "user",
+                  user_id: headChef,
+                },
+              ],
+            },
+            {
+              type: "rich_text_section",
+              elements: [
+                {
+                  type: "emoji",
+                  name: "cook",
+                },
+                {
+                  type: "text",
+                  text: " Souschef: ",
+                  style: {
+                    bold: true,
+                  },
+                },
+                {
+                  type: "user",
+                  user_id: assistent,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ];
 
   if (firstThirsdayOfTheMonth) {
-    await slackApp.client.chat.postMessage({
-      channel: channelToSendTo,
-      text: `> *Husmøde!*
-Husk også at det er første torsdag i måneden, så medmindre andet er aftalt er der også husmøde på torsdag efter spisning`,
-    });
+    msgBlocks.push(
+      {
+        type: "divider",
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "*Husmøde*",
+        },
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "Husk også at det er første torsdag i måneden, så medmindre andet er aftalt er der også husmøde på torsdag efter spisning",
+        },
+      }
+    );
   }
+
+  msgBlocks.push(
+    {
+      type: "divider",
+    },
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: "*Svar Udbedes*",
+      },
+    },
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: "På denne besked må i meget gerne lave en emoji reaktion for at tilkendegive om i tænker i spiser med på torsdag. Det er fint at ændre den senere men prøv så godt du kan at have et endeligt svar på senest torsdag morgen:",
+      },
+    },
+    {
+      type: "rich_text",
+      elements: [
+        {
+          type: "rich_text_list",
+          style: "bullet",
+          elements: [
+            {
+              type: "rich_text_section",
+              elements: [
+                {
+                  type: "emoji",
+                  name: "white_check_mark",
+                },
+                {
+                  type: "text",
+                  text: ": Ja",
+                },
+              ],
+            },
+            {
+              type: "rich_text_section",
+              elements: [
+                {
+                  type: "emoji",
+                  name: "x",
+                },
+                {
+                  type: "text",
+                  text: ": Nej",
+                },
+              ],
+            },
+            {
+              type: "rich_text_section",
+              elements: [
+                {
+                  type: "emoji",
+                  name: "yes-no-may-be-so-blob",
+                },
+                {
+                  type: "text",
+                  text: ": Stadig usikker/Måske",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: "section",
+      text: {
+        type: "plain_text",
+        text: "Jeg sætter også hver af disse emojis på beskeden nu så de er nemme at klikke, og så fjerner jeg mine egne reaktioner igen torsdag morgen så de ikke bliver talt med",
+      },
+    }
+  );
 
   const reactionMessage = await slackApp.client.chat.postMessage({
     channel: channelToSendTo,
-    text: `> *SU snarest*
-På denne besked må i meget gerne lave en emoji reaktion for at tilkendegive om i tænker i spiser med på torsdag. Det er fint at ændre den senere men prøv så godt du kan at have et endeligt svar på senest torsdag morgen:
-
-:white_check_mark:: Ja
-:x:: Nej
-:yes-no-may-be-so-blob:: Stadig usikker/måske
-
-Jeg sætter også hver af disse emojis på beskeden nu så de er nemme at klikke, og så fjerner jeg mine egne reaktioner igen torsdag morgen så de ikke bliver talt med`,
+    blocks: msgBlocks,
+    text: "Torsdagstallerken om tre dage!",
   });
 
   const reactionMessageTimestamp = reactionMessage.ts;
