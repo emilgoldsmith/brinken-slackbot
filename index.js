@@ -1,6 +1,7 @@
 const { App } = require("@slack/bolt");
 const sheetdb = require("sheetdb-node");
 const _ = require("lodash");
+const lodashJoins = require("lodash-joins");
 const { DateTime } = require("luxon");
 const crypto = require("crypto");
 
@@ -11,7 +12,10 @@ const sheetDbClient = sheetdb({
 });
 
 const BEBOERE_SHEET_NAME = "Beboere";
+const TORSDAGS_TALLERKEN_SHEET_NAME = "Torsdagstallerken";
+const TORSDAGS_TALLERKEN_CHANNEL = "fællesspisning";
 const SLACKBOT_TEST_CHANNEL = "slackbot-test";
+const THIS_BOT_USER_ID = "U07773D070B";
 
 // Initializes your app with your bot token and signing secret
 const slackApp = new App({
@@ -129,22 +133,18 @@ slackApp.command("/brinkenbot-test", async ({ command, ack, respond }) => {
 })();
 
 async function handleDay() {
-  await slackApp.client.chat.postMessage({
-    channel: SLACKBOT_TEST_CHANNEL,
-    text: "Starting handle day",
-  });
-
   const inAWeek = DateTime.now().plus({ weeks: 1 }).toFormat("MM-dd");
   console.log(inAWeek);
   await handleWeekBeforeBirthday(inAWeek);
   const inADay = DateTime.now().plus({ days: 1 }).toFormat("MM-dd");
   console.log(inADay);
   await handleDayBeforeBirthday(inADay);
-
-  await slackApp.client.chat.postMessage({
-    channel: SLACKBOT_TEST_CHANNEL,
-    text: "Completed handle day successfully",
-  });
+  const inThreeDays = DateTime.now().plus({ days: 3 });
+  console.log(inThreeDays);
+  await handleThreeDaysBeforeDinner(inThreeDays);
+  const today = DateTime.now();
+  console.log(today);
+  await handleDayOfDinner(today);
 }
 
 async function handleWeekBeforeBirthday(
@@ -308,4 +308,183 @@ function naturalLanguageList(items) {
     items.slice(0, items.length - 1).join(", ") +
     ` og ${items[items.length - 1]}`
   );
+}
+
+/**
+ * @argument thursdayLuxonDateTime {DateTime}
+ */
+async function handleThreeDaysBeforeDinner(thursdayLuxonDateTime) {
+  if (thursdayLuxonDateTime.weekday !== 4) {
+    return;
+  }
+  const members = JSON.parse(
+    await sheetDbClient.read({ sheet: BEBOERE_SHEET_NAME })
+  );
+
+  const dbRow = JSON.parse(
+    await sheetDbClient.read({
+      sheet: TORSDAGS_TALLERKEN_SHEET_NAME,
+      search: {
+        dato: thursdayLuxonDateTime.toFormat("yyyy-MM-dd"),
+        single_object: true,
+      },
+    })
+  );
+
+  const headChef = getUserIdByRowId(dbRow.hovedkok, members);
+  const assistent = getUserIdByRowId(dbRow.kokkeassistent, members);
+
+  const firstThirsdayOfTheMonth = thursdayLuxonDateTime.day <= 7;
+
+  // easy helper to change to SLACKBOT_TEST_CHANNEL if testing for example
+  const channelToSendTo = TORSDAGS_TALLERKEN_CHANNEL;
+
+  await slackApp.client.chat.postMessage({
+    channel: channelToSendTo,
+    text: `> *Torsdagstallerken Yay!*
+Så er der endnu engang tre dage til torsdagstallerken! I denne uge har vi:
+
+:chef-parrot:*Head Chef:* <@${headChef}>
+:cook:*Souschef:* <@${assistent}>`,
+  });
+
+  if (firstThirsdayOfTheMonth) {
+    await slackApp.client.chat.postMessage({
+      channel: channelToSendTo,
+      text: `> *Husmøde!*
+Husk også at det er første torsdag i måneden, så medmindre andet er aftalt er der også husmøde på torsdag efter spisning`,
+    });
+  }
+
+  const reactionMessage = await slackApp.client.chat.postMessage({
+    channel: channelToSendTo,
+    text: `> *SU snarest*
+På denne besked må i meget gerne lave en emoji reaktion for at tilkendegive om i tænker i spiser med på torsdag. Det er fint at ændre den senere men prøv så godt du kan at have et endeligt svar på senest torsdag morgen:
+
+:white_check_mark:: Ja
+:x:: Nej
+:yes-no-may-be-so-blob:: Stadig usikker/måske
+
+Jeg sætter også hver af disse emojis på beskeden nu så de er nemme at klikke, og så fjerner jeg mine egne reaktioner igen torsdag morgen så de ikke bliver talt med`,
+  });
+
+  const reactionMessageTimestamp = reactionMessage.ts;
+  if (!reactionMessageTimestamp) {
+    throw new Error(
+      `Didn't get a timestamp back from the reaction message: ${JSON.stringify(
+        reactionMessage
+      )}`
+    );
+  }
+
+  const reactionMessageChannelId = reactionMessage.channel;
+  if (!reactionMessageChannelId) {
+    throw new Error(
+      `Didn't get a channel id back from the reaction message: ${JSON.stringify(
+        reactionMessage
+      )}`
+    );
+  }
+
+  await Promise.all(
+    ["white_check_mark", "x", "yes-no-may-be-so-blob"].map((emojiName) =>
+      slackApp.client.reactions.add({
+        channel: reactionMessageChannelId,
+        timestamp: reactionMessageTimestamp,
+        name: emojiName,
+      })
+    )
+  );
+}
+
+function getUserIdByRowId(rowId, members) {
+  const result = members.find((x) => x.id === rowId);
+  if (result === undefined) {
+    throw new Error("Invalid row id for users");
+  }
+  return result["slack-id"];
+}
+
+/**
+ * @argument thursdayLuxonDateTime {DateTime}
+ */
+async function handleDayOfDinner(thursdayLuxonDateTime) {
+  if (thursdayLuxonDateTime.weekday !== 4) {
+    return;
+  }
+
+  // easy helper to change to SLACKBOT_TEST_CHANNEL if testing for example
+  const channelToSendTo = TORSDAGS_TALLERKEN_CHANNEL;
+
+  const allChannels = await slackApp.client.conversations.list({
+    exclude_archived: true,
+  });
+
+  const targetChannelId = allChannels.channels?.find(
+    (x) => x.name === channelToSendTo
+  )?.id;
+
+  if (!targetChannelId) {
+    throw new Error(
+      `Couldn't find id of channel ${channelToSendTo} in list of all channels: ${JSON.stringify(
+        allChannels
+      )}`
+    );
+  }
+
+  const relevantMessageHistory = await slackApp.client.conversations.history({
+    channel: targetChannelId,
+    // latest: thursdayLuxonDateTime.plus({ days: -2 }).toSeconds(),
+    // oldest: thursdayLuxonDateTime.plus({ days: -4 }).toSeconds(),
+  });
+
+  const mostRecentMessageFromUs = relevantMessageHistory.messages?.find(
+    (x) => x.user === THIS_BOT_USER_ID
+  );
+  if (!mostRecentMessageFromUs) {
+    throw new Error(
+      `No message found from us to remove reactions from: ${JSON.stringify(
+        mostRecentMessageFromUs
+      )}`
+    );
+  }
+  const { ts: mostRecentMsgTs, reactions: mostRecentMsgReactions } =
+    mostRecentMessageFromUs;
+  if (!mostRecentMsgTs || !mostRecentMsgReactions) {
+    throw new Error(
+      `Missing timestamp or reactions from most recent message from us: ${JSON.stringify(
+        mostRecentMessageFromUs
+      )}`
+    );
+  }
+
+  const usersThatHaveReacted = mostRecentMsgReactions.flatMap((x) => x.users);
+  const channelMembersResponse = await slackApp.client.conversations.members({
+    channel: targetChannelId,
+  });
+  const channelMembersThatHaventReacted = channelMembersResponse.members.filter(
+    (memberId) => !usersThatHaveReacted.includes(memberId)
+  );
+
+  await Promise.all(
+    ["white_check_mark", "x", "yes-no-may-be-so-blob"].map((emojiName) =>
+      slackApp.client.reactions.remove({
+        channel: targetChannelId,
+        timestamp: mostRecentMsgTs,
+        name: emojiName,
+      })
+    )
+  );
+
+  const reminderString =
+    channelMembersThatHaventReacted.length > 0
+      ? `Jeg kan se at vi mangler svar fra ${naturalLanguageList(
+          channelMembersThatHaventReacted.map((x) => `<@${x}>`)
+        )}`
+      : "Jeg kan også se at alle har fået afgivet svar allerede! Godt gået :tada:!";
+  await slackApp.client.chat.postMessage({
+    channel: channelToSendTo,
+    text: `> *Sidste Udkald*
+Så blev det torsdag! Jeg håber i får en lækker fællesspisning, og husk at opdater jeres svar hvis noget har ændret sig. ${reminderString}`,
+  });
 }
