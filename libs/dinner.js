@@ -1,3 +1,4 @@
+import slackBolt from "@slack/bolt";
 import { richTextNaturalLanguageList } from "./utils.js";
 import {
   sheetDbClient,
@@ -7,6 +8,170 @@ import {
   slackClient,
   THIS_BOT_USER_ID,
 } from "./globals.js";
+import { DateTime } from "luxon";
+import lodashJoins from "lodash-joins";
+
+/**
+ * @param {object} obj
+ * @param {string} obj.text
+ * @param {(slackBolt.Block | slackBolt.KnownBlock)[]} obj.blocks
+ * @param {string} obj.channel
+ */
+function sendDinnerMessage({ text, blocks, channel }) {
+  return slackClient.chat.postMessage({
+    channel,
+    text,
+    blocks: [
+      ...blocks,
+      {
+        type: "actions",
+        elements: [
+          {
+            type: "button",
+            text: {
+              type: "plain_text",
+              text: "Se skema",
+            },
+            action_id: "see-dinner-schedule",
+          },
+        ],
+      },
+    ],
+  });
+}
+
+/**
+ * @type {[string, slackBolt.Middleware<slackBolt.SlackActionMiddlewareArgs<slackBolt.SlackAction>][]}
+ */
+export const dinnerActionListeners = [
+  [
+    "see-dinner-schedule",
+    async ({ ack, respond }) => {
+      await ack();
+
+      const members = JSON.parse(
+        await sheetDbClient.read({ sheet: BEBOERE_SHEET_NAME })
+      );
+
+      const dbRows = JSON.parse(
+        await sheetDbClient.read({
+          sheet: TORSDAGS_TALLERKEN_SHEET_NAME,
+          search: {
+            dato: ">=" + DateTime.now().toFormat("yyyy-MM-dd"),
+          },
+        })
+      );
+
+      const headChefJoined = lodashJoins.hashInnerJoin(
+        members,
+        (x) => x.id,
+        dbRows,
+        (x) => x.hovedkok
+      );
+      const formattedObjects = lodashJoins.hashInnerJoin(
+        members,
+        (x) => x.id,
+        headChefJoined,
+        (x) => x.kokkeassistent,
+        (memb, headChef) => ({
+          headChef: headChef["slack-id"],
+          assistent: memb["slack-id"],
+          date: DateTime.fromISO(headChef.dato)
+            .setLocale("da-dk")
+            .toLocaleString(DateTime.DATE_FULL),
+        })
+      );
+
+      await respond({
+        text: formattedObjects
+          .map(
+            (x) =>
+              `${x.date}: head chef <@${x.headChef}> assistent <@${x.assistent}>`
+          )
+          .join("\n"),
+        blocks: [
+          {
+            type: "header",
+            text: {
+              type: "plain_text",
+              text: "Torsdagstallerken Program",
+            },
+          },
+          {
+            type: "rich_text",
+            elements: formattedObjects.flatMap((x) => [
+              {
+                type: "rich_text_list",
+                style: "bullet",
+                elements: [
+                  {
+                    type: "rich_text_section",
+                    elements: [
+                      {
+                        type: "text",
+                        text: `${x.date}: `,
+                        style: {
+                          bold: true,
+                        },
+                      },
+                    ],
+                  },
+                ],
+              },
+              {
+                type: "rich_text_list",
+                style: "bullet",
+                indent: 1,
+                elements: [
+                  {
+                    type: "rich_text_section",
+                    elements: [
+                      {
+                        type: "emoji",
+                        name: "chef-parrot",
+                      },
+                      {
+                        type: "text",
+                        text: " Head Chef: ",
+                        style: {
+                          bold: true,
+                        },
+                      },
+                      {
+                        type: "user",
+                        user_id: x.headChef,
+                      },
+                    ],
+                  },
+                  {
+                    type: "rich_text_section",
+                    elements: [
+                      {
+                        type: "emoji",
+                        name: "cook",
+                      },
+                      {
+                        type: "text",
+                        text: " Souschef: ",
+                        style: {
+                          bold: true,
+                        },
+                      },
+                      {
+                        type: "user",
+                        user_id: x.assistent,
+                      },
+                    ],
+                  },
+                ],
+              },
+            ]),
+          },
+        ],
+      });
+    },
+  ],
+];
 
 /**
  * @argument thursdayLuxonDateTime {DateTime}
@@ -209,7 +374,7 @@ export async function handleThreeDaysBeforeDinner(thursdayLuxonDateTime) {
     }
   );
 
-  const reactionMessage = await slackClient.chat.postMessage({
+  const reactionMessage = await sendDinnerMessage({
     channel: channelToSendTo,
     blocks: msgBlocks,
     text: "Torsdagstallerken om tre dage!",
@@ -327,7 +492,7 @@ export async function handleDayOfDinner(thursdayLuxonDateTime) {
     )
   );
 
-  await slackClient.chat.postMessage({
+  await sendDinnerMessage({
     channel: channelToSendTo,
     text: "Husk at melde tilbage om du skal med til torsdagstallerken!",
     blocks: [

@@ -6,6 +6,7 @@ import {
   handleDayBeforeBirthday,
 } from "./libs/birthday.js";
 import {
+  dinnerActionListeners,
   handleDayOfDinner,
   handleThreeDaysBeforeDinner,
 } from "./libs/dinner.js";
@@ -43,6 +44,10 @@ const slackApp = new slackBolt.App({
 });
 
 slackApp.command("/brinkenbot-test", brinkenbotTestSlashCommand());
+
+dinnerActionListeners.forEach(([actionId, listener]) =>
+  slackApp.action(actionId, listener)
+);
 
 (async () => {
   const port = process.env.PORT || 3000;
