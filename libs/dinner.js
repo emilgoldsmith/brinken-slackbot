@@ -11,6 +11,28 @@ import {
 import { DateTime } from "luxon";
 import lodashJoins from "lodash-joins";
 
+const dinnerButtons = {
+  type: "actions",
+  elements: [
+    {
+      type: "button",
+      text: {
+        type: "plain_text",
+        text: "Se skema",
+      },
+      action_id: "see-dinner-schedule",
+    },
+    {
+      type: "button",
+      text: {
+        type: "plain_text",
+        text: "Ret skema",
+      },
+      action_id: "edit-dinner-schedule",
+    },
+  ],
+};
+
 /**
  * @param {object} obj
  * @param {string} obj.text
@@ -21,30 +43,7 @@ function sendDinnerMessage({ text, blocks, channel }) {
   return slackClient.chat.postMessage({
     channel,
     text,
-    blocks: [
-      ...blocks,
-      {
-        type: "actions",
-        elements: [
-          {
-            type: "button",
-            text: {
-              type: "plain_text",
-              text: "Se skema",
-            },
-            action_id: "see-dinner-schedule",
-          },
-          {
-            type: "button",
-            text: {
-              type: "plain_text",
-              text: "Ret skema",
-            },
-            action_id: "edit-dinner-schedule",
-          },
-        ],
-      },
-    ],
+    blocks: [...blocks, dinnerButtons],
   });
 }
 
@@ -129,13 +128,6 @@ export const dinnerActionListeners = [
           },
         ],
       });
-    },
-  ],
-  [
-    "delete-message",
-    async ({ ack, respond }) => {
-      await ack();
-      await respond({ delete_original: true });
     },
   ],
 ];
