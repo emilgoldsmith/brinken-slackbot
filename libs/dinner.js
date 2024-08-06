@@ -9,46 +9,11 @@ import {
   THIS_BOT_USER_ID,
   deleteMessageActionId,
   justAcknowledgeResponseActionId,
+  sendDinnerMessage,
 } from "./globals.js";
 import { DateTime } from "luxon";
 import lodashJoins from "lodash-joins";
 import _ from "lodash";
-
-const dinnerButtons = {
-  type: "actions",
-  elements: [
-    {
-      type: "button",
-      text: {
-        type: "plain_text",
-        text: "Se skema",
-      },
-      action_id: "see-dinner-schedule",
-    },
-    {
-      type: "button",
-      text: {
-        type: "plain_text",
-        text: "Ret skema",
-      },
-      action_id: "edit-dinner-schedule",
-    },
-  ],
-};
-
-/**
- * @param {object} obj
- * @param {string} obj.text
- * @param {(slackBolt.Block | slackBolt.KnownBlock)[]} obj.blocks
- * @param {string} obj.channel
- */
-function sendDinnerMessage({ text, blocks, channel }) {
-  return slackClient.chat.postMessage({
-    channel,
-    text,
-    blocks: [...blocks, dinnerButtons],
-  });
-}
 
 /**
  * @type {[string, slackBolt.Middleware<slackBolt.SlackActionMiddlewareArgs<slackBolt.SlackAction>][]}

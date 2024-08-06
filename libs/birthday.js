@@ -8,37 +8,8 @@ import {
   sheetDbClient,
   BEBOERE_SHEET_NAME,
   deleteMessageActionId,
+  sendBirthdayMessage,
 } from "./globals.js";
-
-export const birthdayButtons = [
-  {
-    type: "actions",
-    elements: [
-      {
-        type: "button",
-        text: {
-          type: "plain_text",
-          text: "Se alle fødselsdage",
-        },
-        action_id: "see-birthday-schedule",
-      },
-    ],
-  },
-];
-
-/**
- * @param {object} obj
- * @param {string} obj.text
- * @param {(slackBolt.Block | slackBolt.KnownBlock)[]} obj.blocks
- * @param {string} obj.channel
- */
-function sendBirthdayMessage({ text, blocks, channel }) {
-  return slackClient.chat.postMessage({
-    channel,
-    text,
-    blocks: [...blocks, ...birthdayButtons],
-  });
-}
 
 /**
  * @type {[string, slackBolt.Middleware<slackBolt.SlackActionMiddlewareArgs<slackBolt.SlackAction>][]}
