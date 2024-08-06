@@ -4,12 +4,14 @@ import { brinkenbotTestSlashCommand } from "./libs/test-slash-command.js";
 import {
   handleWeekBeforeBirthday,
   handleDayBeforeBirthday,
+  birthdayActionListeners,
 } from "./libs/birthday.js";
 import {
   dinnerActionListeners,
   handleDayOfDinner,
   handleThreeDaysBeforeDinner,
 } from "./libs/dinner.js";
+import { globalActionListeners } from "./libs/globals.js";
 
 const slackApp = new slackBolt.App({
   token: process.env.SLACK_BOT_TOKEN,
@@ -45,9 +47,10 @@ const slackApp = new slackBolt.App({
 
 slackApp.command("/brinkenbot-test", brinkenbotTestSlashCommand());
 
-dinnerActionListeners.forEach(([actionId, listener]) =>
-  slackApp.action(actionId, listener)
-);
+globalActionListeners
+  .concat(dinnerActionListeners)
+  .concat(birthdayActionListeners)
+  .forEach(([actionId, listener]) => slackApp.action(actionId, listener));
 
 (async () => {
   const port = process.env.PORT || 3000;
@@ -55,6 +58,7 @@ dinnerActionListeners.forEach(([actionId, listener]) =>
   await slackApp.start(port);
 
   console.log("⚡️ Bolt app is running on port " + port + "!");
+  await process.exit(0);
 })();
 
 async function handleDay() {

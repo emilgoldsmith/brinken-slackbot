@@ -7,9 +7,32 @@ import {
   TORSDAGS_TALLERKEN_CHANNEL,
   slackClient,
   THIS_BOT_USER_ID,
+  deleteMessageActionId,
 } from "./globals.js";
 import { DateTime } from "luxon";
 import lodashJoins from "lodash-joins";
+
+const dinnerButtons = {
+  type: "actions",
+  elements: [
+    {
+      type: "button",
+      text: {
+        type: "plain_text",
+        text: "Se skema",
+      },
+      action_id: "see-dinner-schedule",
+    },
+    {
+      type: "button",
+      text: {
+        type: "plain_text",
+        text: "Ret skema",
+      },
+      action_id: "edit-dinner-schedule",
+    },
+  ],
+};
 
 /**
  * @param {object} obj
@@ -21,30 +44,7 @@ function sendDinnerMessage({ text, blocks, channel }) {
   return slackClient.chat.postMessage({
     channel,
     text,
-    blocks: [
-      ...blocks,
-      {
-        type: "actions",
-        elements: [
-          {
-            type: "button",
-            text: {
-              type: "plain_text",
-              text: "Se skema",
-            },
-            action_id: "see-dinner-schedule",
-          },
-          {
-            type: "button",
-            text: {
-              type: "plain_text",
-              text: "Ret skema",
-            },
-            action_id: "edit-dinner-schedule",
-          },
-        ],
-      },
-    ],
+    blocks: [...blocks, dinnerButtons],
   });
 }
 
@@ -123,19 +123,12 @@ export const dinnerActionListeners = [
                   text: "Skjul besked",
                 },
                 style: "danger",
-                action_id: "delete-message",
+                action_id: deleteMessageActionId,
               },
             ],
           },
         ],
       });
-    },
-  ],
-  [
-    "delete-message",
-    async ({ ack, respond }) => {
-      await ack();
-      await respond({ delete_original: true });
     },
   ],
 ];
@@ -208,7 +201,7 @@ async function handlerDinnerScheduleActionResponse({
             text: "Skjul skema",
           },
           style: "danger",
-          action_id: "delete-message",
+          action_id: deleteMessageActionId,
         },
         ...extraButtons,
       ],

@@ -1,4 +1,5 @@
 import _ from "lodash";
+import slackBolt from "@slack/bolt";
 import { DateTime } from "luxon";
 import { stringNaturalLanguageList } from "./utils.js";
 import {
@@ -6,7 +7,140 @@ import {
   SLACKBOT_TEST_CHANNEL,
   sheetDbClient,
   BEBOERE_SHEET_NAME,
+  deleteMessageActionId,
 } from "./globals.js";
+
+export const birthdayButtons = [
+  {
+    type: "actions",
+    elements: [
+      {
+        type: "button",
+        text: {
+          type: "plain_text",
+          text: "Se alle fødselsdage",
+        },
+        action_id: "see-birthday-schedule",
+      },
+    ],
+  },
+];
+
+/**
+ * @param {object} obj
+ * @param {string} obj.text
+ * @param {(slackBolt.Block | slackBolt.KnownBlock)[]} obj.blocks
+ * @param {string} obj.channel
+ */
+function sendBirthdayMessage({ text, blocks, channel }) {
+  return slackClient.chat.postMessage({
+    channel,
+    text,
+    blocks: [...blocks, birthdayButtons],
+  });
+}
+
+/**
+ * @type {[string, slackBolt.Middleware<slackBolt.SlackActionMiddlewareArgs<slackBolt.SlackAction>][]}
+ */
+export const birthdayActionListeners = [
+  [
+    "see-birthday-schedule",
+    async ({ ack, respond }) => {
+      await ack();
+
+      const members = JSON.parse(
+        await sheetDbClient.read({
+          sheet: BEBOERE_SHEET_NAME,
+        })
+      );
+
+      const { sortedBirthdays: sortedRelativeTo1Jan } = await getBirthdayPeople(
+        ""
+      );
+      const [sortedBirthdaysThisYear, sortedBirthdaysNextYear] = _.chain(
+        sortedRelativeTo1Jan
+      )
+        .partition((x) => x.birthdayYear === DateTime.now().year)
+        .value();
+
+      const sortedBirthdays = [
+        ...sortedBirthdaysThisYear,
+        ...sortedBirthdaysNextYear,
+      ];
+
+      await respond({
+        replace_original: false,
+        response_type: "ephemeral",
+        text: sortedBirthdays
+          .map((x) => `<@${x["slack-id"]}>: ${x.nextAge} år`)
+          .join(", "),
+        blocks: [
+          {
+            type: "header",
+            text: {
+              type: "plain_text",
+              text: "Næste Års Fødselsdage",
+            },
+          },
+          {
+            type: "rich_text",
+            elements: [
+              {
+                type: "rich_text_list",
+                style: "bullet",
+                elements: sortedBirthdays.map((x) => ({
+                  type: "rich_text_section",
+                  elements: [
+                    {
+                      type: "text",
+                      text: `${DateTime.fromISO(x.fødselsdag)
+                        .setLocale("da-DK")
+                        .toFormat("dd. MMMM")}: `,
+                      style: {
+                        bold: true,
+                      },
+                    },
+                    {
+                      type: "emoji",
+                      name: "flag-dk",
+                    },
+                    {
+                      type: "user",
+                      user_id: x["slack-id"],
+                    },
+                    {
+                      type: "text",
+                      text: ` bliver ${x.nextAge} år `,
+                    },
+                    {
+                      type: "emoji",
+                      name: "flag-dk",
+                    },
+                  ],
+                })),
+              },
+            ],
+          },
+          {
+            type: "actions",
+            elements: [
+              {
+                type: "button",
+                text: {
+                  type: "plain_text",
+                  text: "Skjul besked",
+                },
+                style: "danger",
+                action_id: deleteMessageActionId,
+              },
+            ],
+          },
+        ],
+      });
+    },
+  ],
+];
 
 export async function handleWeekBeforeBirthday(
   targetBirthdayMMDD,
@@ -53,39 +187,84 @@ export async function handleWeekBeforeBirthday(
     (m) => !birthdayPeople.map((p) => p.id).includes(m.id)
   );
 
-  const birthdayChannelName = buildBirthdayChannelName(
-    birthdayPeople,
-    birthdayYear,
-    channelNameSuffix
-  );
+  // const birthdayChannelName = buildBirthdayChannelName(
+  //   birthdayPeople,
+  //   birthdayYear,
+  //   channelNameSuffix
+  // );
 
-  const { channel: birthdayChannel } = await slackClient.conversations.create({
-    name: birthdayChannelName,
-    is_private: true,
-  });
+  // const { channel: birthdayChannel } = await slackClient.conversations.create({
+  //   name: birthdayChannelName,
+  //   is_private: true,
+  // });
 
-  await slackClient.conversations.invite({
-    channel: birthdayChannel?.id,
-    users: birthdayCelebrators.map((x) => x["slack-id"]).join(","),
-  });
+  // await slackClient.conversations.invite({
+  //   channel: birthdayChannel?.id,
+  //   users: birthdayCelebrators.map((x) => x["slack-id"]).join(","),
+  // });
+  const birthdayChannelName = SLACKBOT_TEST_CHANNEL;
 
   await slackClient.chat.postMessage({
     channel: birthdayChannelName,
     text: `Så blev det fødselsdagstid igen! Denne gang har vi:\n\n${birthdayPeople
-      .map(
-        (x) =>
-          `<@${x["slack-id"]}> der bliver ${
-            birthdayYear - DateTime.fromISO(x.fødselsdag).year
-          } år gammel`
-      )
-      .join("\n")}\n\nDe har fødselsdag om en uge d. ${
-      DateTime.fromISO(birthdayPeople[0].fødselsdag).day
-    }. ${
-      DateTime.fromISO(birthdayPeople[0].fødselsdag).setLocale("da-DK")
-        .monthLong
-    }, og det er ${stringNaturalLanguageList(
+      .map((x) => `<@${x["slack-id"]}> der bliver ${x.nextAge} år gammel`)
+      .join("\n")}\n\nDe har fødselsdag om en uge ${DateTime.fromISO(
+      x.fødselsdag
+    )
+      .setLocale("da-DK")
+      .toFormat("EEEE 'd.' dd. MMMM")}, og det er ${stringNaturalLanguageList(
       responsiblePeople.map((x) => `<@${x["slack-id"]}>`)
     )} der er hovedansvarlig(e) for fødselsdags morgenmad`,
+    blocks: [
+      {
+        type: "header",
+        text: {
+          type: "plain_text",
+          text: ":flag-dk::flag-dk::flag-dk:Der er fødselsdag i kollektivet!:flag-dk::flag-dk::flag-dk:",
+          emoji: true,
+        },
+      },
+      {
+        type: "rich_text",
+        elements: [
+          {
+            type: "rich_text_section",
+            elements: [
+              {
+                type: "text",
+                text: "Så blev det fødselsdagstid igen! Denne gang har vi:\n\n",
+              },
+            ],
+          },
+          {
+            type: "rich_text_list",
+            style: "bullet",
+            elements: sortedBirthdays.map((x) => ({
+              type: "rich_text_section",
+              elements: [
+                {
+                  type: "emoji",
+                  name: "flag-dk",
+                },
+                {
+                  type: "user",
+                  user_id: x["slack-id"],
+                },
+                {
+                  type: "text",
+                  text: ` der bliver ${x.nextAge} år `,
+                },
+                {
+                  type: "emoji",
+                  name: "flag-dk",
+                },
+              ],
+            })),
+          },
+        ],
+      },
+      ...birthdayButtons,
+    ],
   });
 }
 export async function handleDayBeforeBirthday(
@@ -107,9 +286,26 @@ export async function handleDayBeforeBirthday(
     );
   }
 
-  await slackClient.chat.postMessage({
+  await sendBirthdayMessage({
     channel: birthdayChannelName,
     text: "Så er det i morgen der er fødselsdag <!channel>! ",
+    blocks: [
+      {
+        type: "header",
+        text: {
+          type: "plain_text",
+          text: "Fødselsdag i morgen!",
+        },
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "<!channel>",
+        },
+      },
+      ...birthdayButtons,
+    ],
   });
 }
 
@@ -119,12 +315,17 @@ async function getBirthdayPeople(targetBirthdayMMDD) {
   );
 
   const sortedBirthdays = _.chain(members)
-    .filter((x) => x.fødselsdag)
     .map((x) => {
       const birthdayDate = DateTime.fromISO(x.fødselsdag);
+      const birthdayYear =
+        birthdayDate.set({ year: DateTime.now().year }) < DateTime.now()
+          ? DateTime.now().year + 1
+          : DateTime.now().year;
       return {
         ...x,
         sortableBirthday: birthdayDate.toFormat("MM-dd"),
+        birthdayYear: birthdayYear,
+        nextAge: birthdayYear - birthdayDate.year,
       };
     })
     .sortBy(["sortableBirthday"])
@@ -134,15 +335,14 @@ async function getBirthdayPeople(targetBirthdayMMDD) {
     (x) => targetBirthdayMMDD === x.sortableBirthday
   );
 
-  let birthdayYear = DateTime.now().year;
-  if (
-    DateTime.fromISO(`${birthdayYear}-${targetBirthdayMMDD}`) < DateTime.now()
-  ) {
-    birthdayYear += 1;
-  }
-
-  return { birthdayPeople, sortedBirthdays, members, birthdayYear };
+  return {
+    birthdayPeople,
+    sortedBirthdays,
+    members,
+    birthdayYear: birthdayPeople[0]?.birthdayYear,
+  };
 }
+
 function buildBirthdayChannelName(
   birthdayPeople,
   birthdayYear,
