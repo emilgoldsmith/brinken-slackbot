@@ -159,14 +159,11 @@ async function handlerDinnerScheduleActionResponse({
     })
   );
 
-  const targetDbRows = _.chain(allDbRows)
-    .filter(
-      (x) =>
-        x.dato >= startDate.toFormat("yyyy-MM-dd") &&
-        x.dato <= endDate.toFormat("yyyy-MM-dd")
-    )
-    .sortBy("dato")
-    .value();
+  const targetDbRows = allDbRows.filter(
+    (x) =>
+      x.dato >= startDate.toFormat("yyyy-MM-dd") &&
+      x.dato <= endDate.toFormat("yyyy-MM-dd")
+  );
 
   const hasMore =
     allDbRows.find((x) => x.dato > endDate.toFormat("yyyy-MM-dd")) !==
@@ -189,7 +186,13 @@ async function handlerDinnerScheduleActionResponse({
       date: DateTime.fromISO(headChef.dato)
         .setLocale("da-dk")
         .toLocaleString(DateTime.DATE_FULL),
+      sortableDateString: headChef.dato,
     })
+  );
+
+  const orderedFormattedObjects = _.sortBy(
+    formattedObjects,
+    "sortableDateString"
   );
 
   function buildHideScheduleButton(extraButtons = []) {
@@ -213,7 +216,7 @@ async function handlerDinnerScheduleActionResponse({
   await respond({
     response_type: "ephemeral",
     replace_original: updateOriginal,
-    text: formattedObjects
+    text: orderedFormattedObjects
       .map(
         (x) =>
           `${x.date}: head chef <@${x.headChef}> assistent <@${x.assistent}>`
@@ -230,7 +233,7 @@ async function handlerDinnerScheduleActionResponse({
       buildHideScheduleButton(),
       {
         type: "rich_text",
-        elements: formattedObjects.flatMap((x) => [
+        elements: orderedFormattedObjects.flatMap((x) => [
           {
             type: "rich_text_list",
             style: "bullet",
