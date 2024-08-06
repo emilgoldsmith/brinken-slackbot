@@ -9,6 +9,7 @@ import {
   BEBOERE_SHEET_NAME,
   deleteMessageActionId,
   sendBirthdayMessage,
+  RUNNING_IN_PRODUCTION,
 } from "./globals.js";
 
 /**
@@ -164,15 +165,19 @@ export async function handleWeekBeforeBirthday(
     channelNameSuffix
   );
 
-  const { channel: birthdayChannel } = await slackClient.conversations.create({
-    name: birthdayChannelName,
-    is_private: true,
-  });
+  if (RUNNING_IN_PRODUCTION) {
+    const { channel: birthdayChannel } = await slackClient.conversations.create(
+      {
+        name: birthdayChannelName,
+        is_private: true,
+      }
+    );
 
-  await slackClient.conversations.invite({
-    channel: birthdayChannel?.id,
-    users: birthdayCelebrators.map((x) => x["slack-id"]).join(","),
-  });
+    await slackClient.conversations.invite({
+      channel: birthdayChannel?.id,
+      users: birthdayCelebrators.map((x) => x["slack-id"]).join(","),
+    });
+  }
 
   await sendBirthdayMessage({
     channel: birthdayChannelName,
@@ -352,6 +357,9 @@ function buildBirthdayChannelName(
   birthdayYear,
   channelNameSuffix
 ) {
+  if (!RUNNING_IN_PRODUCTION) {
+    return SLACKBOT_TEST_CHANNEL;
+  }
   return (
     birthdayPeople.map((x) => x.navn.toLowerCase()).join("-") +
     `-fødselsdag-${birthdayYear}` +

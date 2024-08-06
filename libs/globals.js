@@ -4,8 +4,10 @@ import sheetdb from "sheetdb-node";
 export const SLACKBOT_TEST_CHANNEL = "slackbot-test";
 export const BEBOERE_SHEET_NAME = "Beboere";
 export const TORSDAGS_TALLERKEN_SHEET_NAME = "Torsdagstallerken";
-export const TORSDAGS_TALLERKEN_CHANNEL =
-  process.env.RENDER === "true" ? "fællesspisning" : SLACKBOT_TEST_CHANNEL;
+export const RUNNING_IN_PRODUCTION = process.env.RENDER === "true";
+export const TORSDAGS_TALLERKEN_CHANNEL = RUNNING_IN_PRODUCTION
+  ? "fællesspisning"
+  : SLACKBOT_TEST_CHANNEL;
 export const THIS_BOT_USER_ID = "U07773D070B";
 
 export const deleteMessageActionId = "delete-message";
