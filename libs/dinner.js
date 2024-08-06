@@ -155,16 +155,17 @@ async function handlerDinnerScheduleActionResponse({
   const allDbRows = JSON.parse(
     await sheetDbClient.read({
       sheet: TORSDAGS_TALLERKEN_SHEET_NAME,
-      sort_by: "dato",
-      sort_order: "asc",
     })
   );
 
-  const targetDbRows = allDbRows.filter(
-    (x) =>
-      x.dato >= startDate.toFormat("yyyy-MM-dd") &&
-      x.dato <= endDate.toFormat("yyyy-MM-dd")
-  );
+  const targetDbRows = _.chain(allDbRows)
+    .filter(
+      (x) =>
+        x.dato >= startDate.toFormat("yyyy-MM-dd") &&
+        x.dato <= endDate.toFormat("yyyy-MM-dd")
+    )
+    .sortBy("dato")
+    .value();
 
   const hasMore =
     allDbRows.find((x) => x.dato > endDate.toFormat("yyyy-MM-dd")) !==
