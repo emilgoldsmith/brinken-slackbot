@@ -8,6 +8,7 @@ import {
   slackClient,
   THIS_BOT_USER_ID,
   deleteMessageActionId,
+  justAcknowledgeResponseActionId,
 } from "./globals.js";
 import { DateTime } from "luxon";
 import lodashJoins from "lodash-joins";
@@ -115,6 +116,7 @@ export const dinnerActionListeners = [
                 },
                 style: "primary",
                 url,
+                action_id: justAcknowledgeResponseActionId,
               },
               {
                 type: "button",
