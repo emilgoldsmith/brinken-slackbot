@@ -58,8 +58,6 @@ globalActionListeners
   await slackApp.start(port);
 
   console.log("⚡️ Bolt app is running on port " + port + "!");
-  // await handleWeekBeforeBirthday("05-26");
-  // await process.exit(0);
 })();
 
 async function handleDay() {

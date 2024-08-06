@@ -36,7 +36,7 @@ function sendBirthdayMessage({ text, blocks, channel }) {
   return slackClient.chat.postMessage({
     channel,
     text,
-    blocks: [...blocks, birthdayButtons],
+    blocks: [...blocks, ...birthdayButtons],
   });
 }
 
@@ -187,29 +187,29 @@ export async function handleWeekBeforeBirthday(
     (m) => !birthdayPeople.map((p) => p.id).includes(m.id)
   );
 
-  // const birthdayChannelName = buildBirthdayChannelName(
-  //   birthdayPeople,
-  //   birthdayYear,
-  //   channelNameSuffix
-  // );
+  const birthdayChannelName = buildBirthdayChannelName(
+    birthdayPeople,
+    birthdayYear,
+    channelNameSuffix
+  );
 
-  // const { channel: birthdayChannel } = await slackClient.conversations.create({
-  //   name: birthdayChannelName,
-  //   is_private: true,
-  // });
+  const { channel: birthdayChannel } = await slackClient.conversations.create({
+    name: birthdayChannelName,
+    is_private: true,
+  });
 
-  // await slackClient.conversations.invite({
-  //   channel: birthdayChannel?.id,
-  //   users: birthdayCelebrators.map((x) => x["slack-id"]).join(","),
-  // });
-  const birthdayChannelName = SLACKBOT_TEST_CHANNEL;
+  await slackClient.conversations.invite({
+    channel: birthdayChannel?.id,
+    users: birthdayCelebrators.map((x) => x["slack-id"]).join(","),
+  });
 
-  await slackClient.chat.postMessage({
+  await sendBirthdayMessage({
     channel: birthdayChannelName,
     text: `Så blev det fødselsdagstid igen! Denne gang har vi:\n\n${birthdayPeople
       .map((x) => `<@${x["slack-id"]}> der bliver ${x.nextAge} år gammel`)
-      .join("\n")}\n\nDe har fødselsdag om en uge ${DateTime.fromISO(
-      x.fødselsdag
+      .join("\n")}\n\nDe har fødselsdag om en uge ${DateTime.fromFormat(
+      targetBirthdayMMDD,
+      "MM-dd"
     )
       .setLocale("da-DK")
       .toFormat("EEEE 'd.' dd. MMMM")}, og det er ${stringNaturalLanguageList(
@@ -239,7 +239,7 @@ export async function handleWeekBeforeBirthday(
           {
             type: "rich_text_list",
             style: "bullet",
-            elements: sortedBirthdays.map((x) => ({
+            elements: birthdayPeople.map((x) => ({
               type: "rich_text_section",
               elements: [
                 {
@@ -263,7 +263,41 @@ export async function handleWeekBeforeBirthday(
           },
         ],
       },
-      ...birthdayButtons,
+      { type: "divider" },
+      {
+        type: "rich_text",
+        elements: [
+          {
+            type: "rich_text_section",
+            elements: [
+              {
+                type: "text",
+                text: `De har fødselsdag om en uge ${DateTime.fromFormat(
+                  targetBirthdayMMDD,
+                  "MM-dd"
+                )
+                  .setLocale("da-DK")
+                  .toFormat(
+                    "EEEE 'd.' dd. MMMM"
+                  )}, og de hovedansvarlige for fødselsdags morgenmad er:\n\n`,
+              },
+            ],
+          },
+          {
+            type: "rich_text_list",
+            style: "bullet",
+            elements: responsiblePeople.map((x) => ({
+              type: "rich_text_section",
+              elements: [
+                {
+                  type: "user",
+                  user_id: x["slack-id"],
+                },
+              ],
+            })),
+          },
+        ],
+      },
     ],
   });
 }
@@ -304,7 +338,6 @@ export async function handleDayBeforeBirthday(
           text: "<!channel>",
         },
       },
-      ...birthdayButtons,
     ],
   });
 }
