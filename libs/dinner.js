@@ -157,8 +157,6 @@ async function handlerDinnerScheduleActionResponse({
       sheet: TORSDAGS_TALLERKEN_SHEET_NAME,
       sort_by: "dato",
       sort_order: "asc",
-      sort_method: "date",
-      sort_date_format: "Y-m-d",
     })
   );
 
