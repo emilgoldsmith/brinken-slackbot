@@ -1,4 +1,5 @@
 import { generateAllPairings } from "./utils";
+import _ from "lodash";
 
 // Only test with 10 because that's what we're making the function for
 const n = 10;
@@ -67,5 +68,22 @@ describe("generateAllPairings", () => {
         lastSeen[x] = i;
       }
     }
+  });
+
+  it("has people take min 4 headchefs and max 5 out of the 9 rounds", () => {
+    const pairings = generateAllPairings(n);
+    const numFirsts = {};
+    for (const x of pairings) {
+      const headchef = x[0];
+      if (headchef in numFirsts) {
+        numFirsts[headchef]++;
+      } else {
+        numFirsts[headchef] = 1;
+      }
+    }
+    _.forEach(numFirsts, (val, key) => {
+      expect(val, key).toBeGreaterThanOrEqual(4);
+      expect(val, key).toBeLessThanOrEqual(5);
+    });
   });
 });

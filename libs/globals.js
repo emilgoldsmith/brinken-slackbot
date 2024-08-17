@@ -4,6 +4,7 @@ import sheetdb from "sheetdb-node";
 export const SLACKBOT_TEST_CHANNEL = "slackbot-test";
 export const BEBOERE_SHEET_NAME = "Beboere";
 export const TORSDAGS_TALLERKEN_SHEET_NAME = "Torsdagstallerken";
+export const ARCHIVE_TORSDAGS_TALLERKEN_SHEET_NAME = "Torsdagstallerkensarkiv";
 export const RUNNING_IN_PRODUCTION = process.env.RENDER === "true";
 export const TORSDAGS_TALLERKEN_CHANNEL = RUNNING_IN_PRODUCTION
   ? "fællesspisning"

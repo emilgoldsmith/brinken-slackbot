@@ -1,5 +1,5 @@
 import slackBolt from "@slack/bolt";
-import { richTextNaturalLanguageList } from "./utils.js";
+import { generateAllPairings, richTextNaturalLanguageList } from "./utils.js";
 import {
   sheetDbClient,
   BEBOERE_SHEET_NAME,
@@ -10,6 +10,9 @@ import {
   deleteMessageActionId,
   justAcknowledgeResponseActionId,
   sendDinnerMessage,
+  RUNNING_IN_PRODUCTION,
+  SLACKBOT_TEST_CHANNEL,
+  ARCHIVE_TORSDAGS_TALLERKEN_SHEET_NAME,
 } from "./globals.js";
 import { DateTime } from "luxon";
 import lodashJoins from "lodash-joins";
@@ -295,6 +298,81 @@ export async function handleThreeDaysBeforeDinner(thursdayLuxonDateTime) {
   const members = JSON.parse(
     await sheetDbClient.read({ sheet: BEBOERE_SHEET_NAME })
   );
+
+  if (RUNNING_IN_PRODUCTION) {
+    const allDinnerRows = await sheetDbClient.read({
+      sheet: TORSDAGS_TALLERKEN_SHEET_NAME,
+    });
+
+    maxDateRow = _.maxBy(allDinnerRows, (x) => x.dato);
+    if (
+      maxDateRow.dato <
+      thursdayLuxonDateTime.plus({ months: 3 }).toFormat("yyyy-MM-dd")
+    ) {
+      const nextPairings = generateAllPairings(10);
+      if (members.length !== 10) {
+        await slackClient.chat.postMessage({
+          channel: SLACKBOT_TEST_CHANNEL,
+          text:
+            "There were not 10 members in the database when trying to generate new dinner pairings. Instead there were " +
+            members.length,
+        });
+        return;
+      }
+
+      let curDate = DateTime.fromISO(maxDateRow.dato);
+      await sheetDbClient.create(
+        nextPairings.map((x) => {
+          curDate = curDate.plus({ weeks: 1 });
+          return {
+            dato: curDate.toFormat("yyyy-MM-dd"),
+            hovedkok: x[0],
+            kokkeassistent: x[1],
+          };
+        }),
+        TORSDAGS_TALLERKEN_SHEET_NAME
+      );
+
+      await sendDinnerMessage({
+        text: `Der er nu tilføjet en hel ekstra runde madlavningsplan der varer indtil ${curDate
+          .setLocale("da-DK")
+          .toFormat(
+            "'d.' dd. MMMM yyyy"
+          )} da vi var tre måneder fra at være færdige med den gamle.`,
+        blocks: [
+          {
+            type: "header",
+            text: {
+              type: "plain_text",
+              text: "Ny madlavningsplan!",
+            },
+          },
+          {
+            type: "section",
+            text: {
+              type: "plain_text",
+              text: `Der er nu madlavningsplan indtil ${curDate
+                .setLocale("da-DK")
+                .toFormat(
+                  "'d.' dd. MMMM yyyy"
+                )} da vi var tre måneder fra at være færdige med den gamle. Du kan se planen her nedenunder.`,
+            },
+          },
+        ],
+      });
+    }
+
+    for (const x of allDinnerRows) {
+      if (x.dato < thursdayLuxonDateTime.toFormat("yyyy-MM-dd")) {
+        await sheetDbClient.create(x, ARCHIVE_TORSDAGS_TALLERKEN_SHEET_NAME);
+        await sheetDbClient.delete(
+          "dato",
+          x.dato,
+          TORSDAGS_TALLERKEN_SHEET_NAME
+        );
+      }
+    }
+  }
 
   const dbRow = JSON.parse(
     await sheetDbClient.read({
