@@ -1,5 +1,5 @@
 import slackBolt from "@slack/bolt";
-import { richTextNaturalLanguageList } from "./utils.js";
+import { generateAllPairings, richTextNaturalLanguageList } from "./utils.js";
 import {
   sheetDbClient,
   BEBOERE_SHEET_NAME,
@@ -10,6 +10,8 @@ import {
   deleteMessageActionId,
   justAcknowledgeResponseActionId,
   sendDinnerMessage,
+  RUNNING_IN_PRODUCTION,
+  SLACKBOT_TEST_CHANNEL,
 } from "./globals.js";
 import { DateTime } from "luxon";
 import lodashJoins from "lodash-joins";
@@ -295,6 +297,47 @@ export async function handleThreeDaysBeforeDinner(thursdayLuxonDateTime) {
   const members = JSON.parse(
     await sheetDbClient.read({ sheet: BEBOERE_SHEET_NAME })
   );
+
+  if (RUNNING_IN_PRODUCTION) {
+    const allDinnerRows = await sheetDbClient.read({
+      sheet: TORSDAGS_TALLERKEN_SHEET_NAME,
+    });
+
+    maxDateRow = _.maxBy(allDinnerRows, (x) => x.dato);
+    if (
+      maxDateRow.dato <
+      thursdayLuxonDateTime.plus({ months: 3 }).toFormat("yyyy-MM-dd")
+    ) {
+      const nextPairings = generateAllPairings(10);
+      if (members.length !== 10) {
+        slackClient.chat.postMessage({
+          channel: SLACKBOT_TEST_CHANNEL,
+          text:
+            "There were not 10 members in the database when trying to generate new dinner pairings. Instead there were " +
+            members.length,
+        });
+        return;
+      }
+
+      let curDate = DateTime.fromISO(maxDateRow.dato);
+      sheetDbClient.create(
+        nextPairings.map((x) => {
+          curDate = curDate.plus({ weeks: 1 });
+          return {
+            dato: curDate.toFormat("yyyy-MM-dd"),
+            hovedkok: x[0],
+            kokkeassistent: x[1],
+          };
+        }),
+        TORSDAGS_TALLERKEN_SHEET_NAME
+      );
+    }
+
+    for (const x of allDinnerRows) {
+      if (x.dato < thursdayLuxonDateTime.toFormat("yyyy-MM-dd")) {
+      }
+    }
+  }
 
   const dbRow = JSON.parse(
     await sheetDbClient.read({
