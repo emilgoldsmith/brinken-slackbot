@@ -304,7 +304,7 @@ export async function handleThreeDaysBeforeDinner(thursdayLuxonDateTime) {
       sheet: TORSDAGS_TALLERKEN_SHEET_NAME,
     });
 
-    maxDateRow = _.maxBy(allDinnerRows, (x) => x.dato);
+    const maxDateRow = _.maxBy(allDinnerRows, (x) => x.dato);
     if (
       maxDateRow.dato <
       thursdayLuxonDateTime.plus({ months: 3 }).toFormat("yyyy-MM-dd")
