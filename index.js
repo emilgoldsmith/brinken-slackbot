@@ -11,7 +11,11 @@ import {
   handleDayOfDinner,
   handleThreeDaysBeforeDinner,
 } from "./libs/dinner.js";
-import { globalActionListeners, slackClient } from "./libs/globals.js";
+import {
+  globalActionListeners,
+  SLACKBOT_TEST_CHANNEL,
+  slackClient,
+} from "./libs/globals.js";
 
 const slackApp = new slackBolt.App({
   token: process.env.SLACK_BOT_TOKEN,
