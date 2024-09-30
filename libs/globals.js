@@ -103,7 +103,7 @@ const dinnerButtons = [
  */
 export function sendDinnerMessage({ text, blocks, channel }) {
   return slackClient.chat.postMessage({
-    channel,
+    channel: channel ?? TORSDAGS_TALLERKEN_CHANNEL,
     text,
     blocks: [...blocks, ...dinnerButtons, getSeeMoreActionsButton("dinner")],
   });
