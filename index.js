@@ -11,7 +11,6 @@ import {
 } from "./libs/dinner.js";
 import {
   clearOutdatedInteractionsInCache,
-  DISCORD_GUILD_ID,
   DISCORD_TEST_CHANNEL_ID,
   globalActionListeners,
   sendMessageToChannel,
@@ -21,6 +20,7 @@ import { slashCommands } from "./libs/slash-commands.js";
 import { Client, Collection, Events, GatewayIntentBits } from "discord.js";
 import { stringifyDiscordClass } from "./libs/utils.js";
 import express from "express";
+import { handleTwoDaysBeforeHouseMeeting } from "./libs/general.js";
 
 const expApp = express();
 
@@ -54,6 +54,9 @@ async function handleDay() {
   const inADay = DateTime.now().plus({ days: 1 }).toFormat("MM-dd");
   console.log(inADay);
   await handleDayBeforeBirthday(inADay);
+  const inTwoDays = DateTime.now().plus({ days: 2 });
+  console.log(inTwoDays);
+  await handleTwoDaysBeforeHouseMeeting(inTwoDays);
   const inThreeDays = DateTime.now().plus({ days: 3 });
   console.log(inThreeDays);
   await handleThreeDaysBeforeDinner(inThreeDays);

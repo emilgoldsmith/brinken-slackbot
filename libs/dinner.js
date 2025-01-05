@@ -15,6 +15,7 @@ import {
   getInteraction,
   sendMessageToChannel,
   DISCORD_TEST_CHANNEL_ID,
+  sendGeneralMessage,
 } from "./globals.js";
 import { discordClient } from "./globals.js";
 import { DateTime, Interval } from "luxon";
@@ -266,7 +267,7 @@ ${orderedFormattedObjects
 }
 
 /**
- * @argument onsdagLuxonDateTime {DateTime}
+ * @argument {DateTime} onsdagLuxonDateTime
  */
 export async function handleThreeDaysBeforeDinner(onsdagLuxonDateTime) {
   if (onsdagLuxonDateTime.weekday !== 3) {
@@ -312,33 +313,15 @@ export async function handleThreeDaysBeforeDinner(onsdagLuxonDateTime) {
         MUMSDAG_SHEET_NAME
       );
 
-      await sendDinnerMessage({
-        text: `Der er nu tilføjet en hel ekstra runde madlavningsplan der varer indtil ${curDate
+      await sendGeneralMessage(
+        `# Ny madlavningsplan!
+
+Der er nu madlavningsplan indtil ${curDate
           .setLocale("da-DK")
           .toFormat(
             "'d.' dd. MMMM yyyy"
-          )} da vi var tre måneder fra at være færdige med den gamle.`,
-        blocks: [
-          {
-            type: "header",
-            text: {
-              type: "plain_text",
-              text: "Ny madlavningsplan!",
-            },
-          },
-          {
-            type: "section",
-            text: {
-              type: "plain_text",
-              text: `Der er nu madlavningsplan indtil ${curDate
-                .setLocale("da-DK")
-                .toFormat(
-                  "'d.' dd. MMMM yyyy"
-                )} da vi var tre måneder fra at være færdige med den gamle. Du kan se planen her nedenunder.`,
-            },
-          },
-        ],
-      });
+          )} da vi var tre måneder fra at være færdige med den gamle. Du kan se planen ved at trykke på se flere handlinger.`
+      );
     }
 
     for (const x of allDinnerRows) {
@@ -362,8 +345,6 @@ export async function handleThreeDaysBeforeDinner(onsdagLuxonDateTime) {
   const headChef = getUserByRowId(dbRow.hovedkok, members);
   const assistent = getUserByRowId(dbRow.kokkeassistent, members);
 
-  const firstThirsdayOfTheMonth = onsdagLuxonDateTime.day <= 7;
-
   const msgLines = [
     "# Mumsdag",
     "",
@@ -378,24 +359,15 @@ export async function handleThreeDaysBeforeDinner(onsdagLuxonDateTime) {
         ? "<@" + assistent["discord-id"] + ">"
         : "**" + assistent["navn"] + "**"
     }`,
-  ];
-
-  if (firstThirsdayOfTheMonth) {
-    msgLines.push(
-      "## Husmøde",
-      "Husk også at det er første onsdag i måneden, så medmindre andet er aftalt er der også husmøde på onsdag efter spisning"
-    );
-  }
-
-  msgLines.push(
+    "",
     "## Svar Udbedes",
     "På denne besked må i meget gerne lave en emoji reaktion for at tilkendegive om i tænker i spiser med på onsdag. Det er fint at ændre den senere men prøv så godt du kan at have et endeligt svar på senest onsdag morgen:",
     "- :white_check_mark:: Ja",
     "- :x:: Nej",
     "- <a:yes_no_may_be_so_blob:1290015813608144956>: Stadig usikker/Måske",
     "",
-    "Jeg sætter også hver af disse emojis på beskeden nu så de er nemme at klikke, og så fjerner jeg mine egne reaktioner igen onsdag morgen så de ikke bliver talt med"
-  );
+    "Jeg sætter også hver af disse emojis på beskeden nu så de er nemme at klikke, og så fjerner jeg mine egne reaktioner igen onsdag morgen så de ikke bliver talt med",
+  ];
 
   const reactionMessage = await sendDinnerMessage(msgLines.join("\n"));
 

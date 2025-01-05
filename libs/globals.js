@@ -158,8 +158,39 @@ export function sendBirthdayMessage({ message, channelId }) {
   });
 }
 
+const generalButtons = [
+  new ButtonBuilder()
+    .setStyle(ButtonStyle.Link)
+    .setLabel("Husmøde Referater")
+    .setURL(
+      "https://docs.google.com/document/d/1Q0PkXL5DTkijfkU9Z7zHdvwEIDCJI2mdhUu-jbBo3ZE/edit?usp=sharing"
+    ),
+  new ButtonBuilder()
+    .setStyle(ButtonStyle.Link)
+    .setLabel("Indflytter Guide")
+    .setURL(
+      "https://docs.google.com/document/d/1pVYvivttl5awFSU2ha6KtNyPEXF5Ws4zETgb1r0M3OE/edit?usp=sharing"
+    ),
+];
+
 /**
- * @param {'dinner' | 'birthday'} type
+ * @param {string} message
+ */
+export function sendGeneralMessage(message) {
+  return sendMessageToChannel({
+    channelId: GENERAL_CHANNEL_ID,
+    message,
+    components: [
+      new ActionRowBuilder().addComponents(
+        ...generalButtons,
+        getSeeMoreActionsButton("general")
+      ),
+    ],
+  });
+}
+
+/**
+ * @param {'dinner' | 'birthday' | 'general'} type
  */
 function getSeeMoreActionsButton(type) {
   return new ButtonBuilder()
@@ -169,7 +200,7 @@ function getSeeMoreActionsButton(type) {
 }
 
 /**
- * @param {'dinner' | 'birthday' | 'none'} exclude
+ * @param {'dinner' | 'birthday' | 'general' | 'none'} exclude
  * @returns {ActionRowBuilder[]}
  */
 export function getMoreButtons(exclude) {
@@ -177,6 +208,18 @@ export function getMoreButtons(exclude) {
    * @type {ActionRowBuilder[]}
    */
   const ret = [];
+  if (exclude !== "general") {
+    ret.push(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setLabel("Generelle Handlinger:")
+          .setStyle(ButtonStyle.Secondary)
+          .setCustomId("title-general")
+          .setDisabled(true),
+        ...generalButtons
+      )
+    );
+  }
   if (exclude !== "dinner") {
     ret.push(
       new ActionRowBuilder().addComponents(
