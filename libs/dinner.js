@@ -359,7 +359,6 @@ Der er nu madlavningsplan indtil ${curDate
         ? "<@" + assistent["discord-id"] + ">"
         : "**" + assistent["navn"] + "**"
     }`,
-    "",
     "## Svar Udbedes",
     "På denne besked må i meget gerne lave en emoji reaktion for at tilkendegive om i tænker i spiser med på onsdag. Det er fint at ændre den senere men prøv så godt du kan at have et endeligt svar på senest onsdag morgen:",
     "- :white_check_mark:: Ja",
