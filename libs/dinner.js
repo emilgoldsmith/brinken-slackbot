@@ -1,33 +1,49 @@
-import slackBolt from "@slack/bolt";
-import { generateAllPairings, richTextNaturalLanguageList } from "./utils.js";
+import { generateAllPairings, stringNaturalLanguageList } from "./utils.js";
 import {
   sheetDbClient,
   BEBOERE_SHEET_NAME,
-  TORSDAGS_TALLERKEN_SHEET_NAME,
-  TORSDAGS_TALLERKEN_CHANNEL,
-  slackClient,
+  MUMSDAG_SHEET_NAME,
+  MUMSDAG_CHANNEL_ID,
   THIS_BOT_USER_ID,
   deleteMessageActionId,
-  justAcknowledgeResponseActionId,
   sendDinnerMessage,
   RUNNING_IN_PRODUCTION,
-  SLACKBOT_TEST_CHANNEL,
-  ARCHIVE_TORSDAGS_TALLERKEN_SHEET_NAME,
+  ARCHIVE_MUMSDAG_SHEET_NAME,
+  DISCORD_GUILD_ID,
+  cacheInteraction,
+  isInteractionValid,
+  getInteraction,
+  sendMessageToChannel,
+  DISCORD_TEST_CHANNEL_ID,
 } from "./globals.js";
-import { DateTime } from "luxon";
+import { discordClient } from "./globals.js";
+import { DateTime, Interval } from "luxon";
 import lodashJoins from "lodash-joins";
 import _ from "lodash";
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  Message,
+  TextChannel,
+} from "discord.js";
 
 /**
- * @type {[string, slackBolt.Middleware<slackBolt.SlackActionMiddlewareArgs<slackBolt.SlackAction>][]}
+ * @callback ActionlistenerCb
+ * @param {object} obj
+ * @param {import("discord.js").Interaction} obj.interaction
+ * @param {string} obj.actionValue
+ */
+
+/**
+ * @type {[string, ActionlistenerCb][]}
  */
 export const dinnerActionListeners = [
   [
     "see-dinner-schedule",
-    async ({ ack, respond }) => {
-      await ack();
+    async ({ interaction }) => {
       await handlerDinnerScheduleActionResponse({
-        respond,
+        interaction,
         startDate: DateTime.now(),
         endDate: DateTime.now().plus({ weeks: 4 }),
         updateOriginal: false,
@@ -36,68 +52,57 @@ export const dinnerActionListeners = [
   ],
   [
     "show-more-dinner-schedule",
-    async ({ ack, respond, action }) => {
-      await ack();
+    async ({ interaction, actionValue }) => {
+      const [endDateISO, isContinuedMessageString, startDateISO] =
+        actionValue.split("#");
+      let startDate = DateTime.fromISO(startDateISO);
+      const endDate = DateTime.fromISO(endDateISO).plus({ weeks: 4 });
+      let isContinuedMessage = isContinuedMessageString === "true";
+      let updateOriginal = true;
+      let needToSplitMessage = false;
+      if (Interval.fromDateTimes(startDate, endDate).length("weeks") > 17) {
+        startDate = DateTime.fromISO(endDateISO);
+        isContinuedMessage = true;
+        updateOriginal = false;
+        needToSplitMessage = true;
+      }
       await handlerDinnerScheduleActionResponse({
-        respond,
-        startDate: DateTime.now(),
-        endDate: DateTime.fromISO(action.value).plus({ weeks: 4 }),
-        updateOriginal: true,
+        interaction,
+        startDate,
+        endDate,
+        updateOriginal,
+        isContinuedMessage,
       });
+      if (needToSplitMessage) {
+        await handlerDinnerScheduleActionResponse({
+          interaction,
+          startDate: DateTime.fromISO(startDateISO),
+          endDate: DateTime.fromISO(endDateISO),
+          updateOriginal: true,
+          isContinuedMessage: isContinuedMessageString === "true",
+          disableShowMore: true,
+          replyAlreadyAckhnowledged: true,
+        });
+      }
     },
   ],
   [
     "edit-dinner-schedule",
-    async ({ ack, respond }) => {
-      await ack();
-      const mainText =
-        'Det kan godt være det følgende virker lidt skræmmende for en ikke teknisk person, men jeg ved du godt kan klare det, og bare rolig hvis noget går galt så fikser vi det bare igen, ingen fare overhovedet :heart:.\n\nFor at beholde så meget fleksibilitet som muligt har vi valgt at den bedste måde, trods lidt kompleksitet, er at rette direkte i vores "database." Vi har dog heldigvis bare brugt Google Sheets som vores database for at forhåbentligt gøre det så nemt som muligt at rette i. Tryk på knappen nedenfor for at gå til regnearket, hvor du først vil se den mere menneskelæselige version hvor du kan få overblik over hvordan du vil rette. Når du så rent faktisk skal rette går du over til "Torsdagstallerken" arket, dette er også tydeligt markeret i regnearket, og her kan du så lave de rent faktiske database rettelser. Computere er dumme så det er vigtigt her at du følger formatet med at bruge tal til at referere til os beboere og at datoerne er i År-Måned-Dato format, men som vi skrev ovenfor, bare stol på dig selv, det skal nok gå, og hvis noget går galt så fikser de mere tekniske personer i kollektivet det bare. Der er intet der er i fare for at blive fuldstændig ødelagt, vi kan altid finde tilbage til den tilstand den var i før.';
-      const url =
-        "https://docs.google.com/spreadsheets/d/12BjvaehXZyt2CI_rqfexB6pXbZcACS4x3iKM7xMaMOI/edit?usp=sharing&gid=451251755";
-      await respond({
-        replace_original: false,
-        response_type: "ephemeral",
-        text: `${mainText}.\n\nHer er linket: ${url}`,
-        blocks: [
-          {
-            type: "header",
-            text: {
-              type: "plain_text",
-              text: "Sådan retter man i programmet:",
-            },
-          },
-          {
-            type: "section",
-            text: {
-              type: "plain_text",
-              emoji: true,
-              text: mainText,
-            },
-          },
-          {
-            type: "actions",
-            elements: [
-              {
-                type: "button",
-                text: {
-                  type: "plain_text",
-                  text: "Gå til regneark",
-                },
-                style: "primary",
-                url,
-                action_id: justAcknowledgeResponseActionId,
-              },
-              {
-                type: "button",
-                text: {
-                  type: "plain_text",
-                  text: "Skjul besked",
-                },
-                style: "danger",
-                action_id: deleteMessageActionId,
-              },
-            ],
-          },
+    async ({ interaction }) => {
+      await interaction.reply({
+        ephemeral: true,
+        content: `Det kan godt være det følgende virker lidt skræmmende for en ikke teknisk person, men jeg ved du godt kan klare det, og bare rolig hvis noget går galt så fikser vi det bare igen, ingen fare overhovedet :heart:.
+
+For at beholde så meget fleksibilitet som muligt har vi valgt at den bedste måde, trods lidt kompleksitet, er at rette direkte i vores "database." Vi har dog heldigvis bare brugt Google Sheets som vores database for at forhåbentligt gøre det så nemt som muligt at rette i. Tryk på knappen nedenfor for at gå til regnearket, hvor du først vil se den mere menneskelæselige version hvor du kan få overblik over hvordan du vil rette. Når du så rent faktisk skal rette går du over til "${MUMSDAG_SHEET_NAME}" arket, dette er også tydeligt markeret i regnearket, og her kan du så lave de rent faktiske database rettelser. Computere er dumme så det er vigtigt her at du følger formatet med at bruge tal til at referere til os beboere og at datoerne er i År-Måned-Dato format, men som vi skrev ovenfor, bare stol på dig selv, det skal nok gå, og hvis noget går galt så fikser de mere tekniske personer i kollektivet det bare. Der er intet der er i fare for at blive fuldstændig ødelagt, vi kan altid finde tilbage til den tilstand den var i før.`,
+        components: [
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setLabel("Gå til database regnearket")
+              .setStyle(ButtonStyle.Link)
+              .setURL(
+                "https://docs.google.com/spreadsheets/d/12BjvaehXZyt2CI_rqfexB6pXbZcACS4x3iKM7xMaMOI/edit?usp=sharing&gid=451251755"
+              )
+          ),
         ],
       });
     },
@@ -106,16 +111,22 @@ export const dinnerActionListeners = [
 
 /**
  * @param {object} obj
- * @param {slackBolt.respondFn} obj.respond
+ * @param {import("discord.js").Interaction} obj.interaction
  * @param {DateTime} obj.startDate
  * @param {DateTime} obj.endDate
  * @param {boolean} obj.updateOriginal
+ * @param {boolean} [obj.isContinuedMessage=false]
+ * @param {boolean} [obj.disableShowMore=false]
+ * @param {boolean} [obj.replyAlreadyAckhnowledged=false]
  */
 async function handlerDinnerScheduleActionResponse({
-  respond,
+  interaction,
   startDate,
   endDate,
   updateOriginal,
+  isContinuedMessage = false,
+  disableShowMore = false,
+  replyAlreadyAckhnowledged = false,
 }) {
   const members = JSON.parse(
     await sheetDbClient.read({ sheet: BEBOERE_SHEET_NAME })
@@ -123,7 +134,7 @@ async function handlerDinnerScheduleActionResponse({
 
   const allDbRows = JSON.parse(
     await sheetDbClient.read({
-      sheet: TORSDAGS_TALLERKEN_SHEET_NAME,
+      sheet: MUMSDAG_SHEET_NAME,
     })
   );
 
@@ -149,8 +160,12 @@ async function handlerDinnerScheduleActionResponse({
     headChefJoined,
     (x) => x.kokkeassistent,
     (memb, headChef) => ({
-      headChef: headChef["slack-id"],
-      assistent: memb["slack-id"],
+      headChefDiscordString: headChef["discord-id"]
+        ? "<@" + headChef["discord-id"] + ">"
+        : "**" + headChef["navn"] + "**",
+      assistentDiscordString: memb["discord-id"]
+        ? "<@" + memb["discord-id"] + ">"
+        : "**" + memb["navn"] + "**",
       date: DateTime.fromISO(headChef.dato)
         .setLocale("da-dk")
         .toLocaleString(DateTime.DATE_FULL),
@@ -163,136 +178,98 @@ async function handlerDinnerScheduleActionResponse({
     "sortableDateString"
   );
 
-  function buildHideScheduleButton(extraButtons = []) {
-    return {
-      type: "actions",
-      elements: [
-        {
-          type: "button",
-          text: {
-            type: "plain_text",
-            text: "Skjul skema",
-          },
-          style: "danger",
-          action_id: deleteMessageActionId,
-        },
-        ...extraButtons,
-      ],
-    };
+  const content = `\
+# ${
+    isContinuedMessage
+      ? "Fortsat Mumsdag Program\n\nDer er en makslængde på beskeder i Discord så jeg blev nødt til at splitte skemaet op i flere beskeder"
+      : "Mumsdag Program"
   }
 
-  await respond({
-    response_type: "ephemeral",
-    replace_original: updateOriginal,
-    text: orderedFormattedObjects
-      .map(
-        (x) =>
-          `${x.date}: head chef <@${x.headChef}> assistent <@${x.assistent}>`
+${orderedFormattedObjects
+  .map(
+    (x) => `\
+- **${x.date}:**
+  - :cook: **Head Chef:** ${x.headChefDiscordString}
+  - :cook: **Souschef:** ${x.assistentDiscordString}`
+  )
+  .join("\n")}`;
+
+  const actionRow = new ActionRowBuilder();
+  actionRow.addComponents(
+    new ButtonBuilder()
+      .setCustomId(
+        "show-more-dinner-schedule*" +
+          endDate.toISO() +
+          "#" +
+          isContinuedMessage.toString() +
+          "#" +
+          startDate.toISO()
       )
-      .join("\n"),
-    blocks: [
-      {
-        type: "header",
-        text: {
-          type: "plain_text",
-          text: "Torsdagstallerken Program",
-        },
-      },
-      buildHideScheduleButton(),
-      {
-        type: "rich_text",
-        elements: orderedFormattedObjects.flatMap((x) => [
-          {
-            type: "rich_text_list",
-            style: "bullet",
-            elements: [
-              {
-                type: "rich_text_section",
-                elements: [
-                  {
-                    type: "text",
-                    text: `${x.date}: `,
-                    style: {
-                      bold: true,
-                    },
-                  },
-                ],
-              },
-            ],
-          },
-          {
-            type: "rich_text_list",
-            style: "bullet",
-            indent: 1,
-            elements: [
-              {
-                type: "rich_text_section",
-                elements: [
-                  {
-                    type: "emoji",
-                    name: "chef-parrot",
-                  },
-                  {
-                    type: "text",
-                    text: " Head Chef: ",
-                    style: {
-                      bold: true,
-                    },
-                  },
-                  {
-                    type: "user",
-                    user_id: x.headChef,
-                  },
-                ],
-              },
-              {
-                type: "rich_text_section",
-                elements: [
-                  {
-                    type: "emoji",
-                    name: "cook",
-                  },
-                  {
-                    type: "text",
-                    text: " Souschef: ",
-                    style: {
-                      bold: true,
-                    },
-                  },
-                  {
-                    type: "user",
-                    user_id: x.assistent,
-                  },
-                ],
-              },
-            ],
-          },
-        ]),
-      },
-      buildHideScheduleButton(
-        hasMore
-          ? [
-              {
-                type: "button",
-                text: {
-                  type: "plain_text",
-                  text: "Vis flere",
-                },
-                action_id: "show-more-dinner-schedule",
-                value: endDate.toISO(),
-              },
-            ]
-          : []
-      ),
-    ],
-  });
+      .setLabel("Vis flere")
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(disableShowMore || !hasMore)
+  );
+
+  actionRow.addComponents(
+    new ButtonBuilder()
+      .setCustomId(deleteMessageActionId)
+      .setLabel("Skjul skema")
+      .setStyle(ButtonStyle.Danger)
+  );
+
+  if (updateOriginal) {
+    const messageId = interaction.message.id;
+    const oldInteraction = getInteraction(messageId);
+    if (!isInteractionValid(messageId) || oldInteraction === undefined) {
+      if (replyAlreadyAckhnowledged) {
+        return;
+      }
+      await interaction.reply({
+        content,
+        components: [actionRow],
+        ephemeral: true,
+      });
+      await interaction.followUp({
+        content:
+          "Da Discord ikke tillader at opdatere beskeder der er over 15 minutter gamle, så har jeg istedet sendt dig en ny besked",
+        ephemeral: true,
+      });
+      const reply = await interaction.fetchReply();
+      cacheInteraction({
+        timestamp: reply.createdTimestamp,
+        interaction,
+        messageId: reply.id,
+      });
+      return;
+    }
+
+    if (!replyAlreadyAckhnowledged) {
+      await interaction.deferUpdate();
+    }
+    await oldInteraction.editReply({
+      content,
+      components: [actionRow],
+    });
+  } else {
+    await interaction.reply({
+      content,
+      components: [actionRow],
+      ephemeral: true,
+    });
+    const reply = await interaction.fetchReply();
+    cacheInteraction({
+      timestamp: reply.createdTimestamp,
+      interaction,
+      messageId: reply.id,
+    });
+  }
 }
 
 /**
- * @argument thursdayLuxonDateTime {DateTime}
+ * @argument onsdagLuxonDateTime {DateTime}
  */
-export async function handleThreeDaysBeforeDinner(thursdayLuxonDateTime) {
-  if (thursdayLuxonDateTime.weekday !== 4) {
+export async function handleThreeDaysBeforeDinner(onsdagLuxonDateTime) {
+  if (onsdagLuxonDateTime.weekday !== 3) {
     return;
   }
   const members = JSON.parse(
@@ -302,20 +279,20 @@ export async function handleThreeDaysBeforeDinner(thursdayLuxonDateTime) {
   if (RUNNING_IN_PRODUCTION) {
     const allDinnerRows = JSON.parse(
       await sheetDbClient.read({
-        sheet: TORSDAGS_TALLERKEN_SHEET_NAME,
+        sheet: MUMSDAG_SHEET_NAME,
       })
     );
 
     const maxDateRow = _.maxBy(allDinnerRows, "dato");
     if (
       maxDateRow.dato <
-      thursdayLuxonDateTime.plus({ months: 3 }).toFormat("yyyy-MM-dd")
+      onsdagLuxonDateTime.plus({ months: 3 }).toFormat("yyyy-MM-dd")
     ) {
       const nextPairings = generateAllPairings(10);
       if (members.length !== 10) {
-        await slackClient.chat.postMessage({
-          channel: SLACKBOT_TEST_CHANNEL,
-          text:
+        await sendMessageToChannel({
+          channelId: DISCORD_TEST_CHANNEL_ID,
+          message:
             "There were not 10 members in the database when trying to generate new dinner pairings. Instead there were " +
             members.length,
         });
@@ -332,7 +309,7 @@ export async function handleThreeDaysBeforeDinner(thursdayLuxonDateTime) {
             kokkeassistent: x[1],
           };
         }),
-        TORSDAGS_TALLERKEN_SHEET_NAME
+        MUMSDAG_SHEET_NAME
       );
 
       await sendDinnerMessage({
@@ -365,247 +342,75 @@ export async function handleThreeDaysBeforeDinner(thursdayLuxonDateTime) {
     }
 
     for (const x of allDinnerRows) {
-      if (x.dato < thursdayLuxonDateTime.toFormat("yyyy-MM-dd")) {
-        await sheetDbClient.create(x, ARCHIVE_TORSDAGS_TALLERKEN_SHEET_NAME);
-        await sheetDbClient.delete(
-          "dato",
-          x.dato,
-          TORSDAGS_TALLERKEN_SHEET_NAME
-        );
+      if (x.dato < onsdagLuxonDateTime.toFormat("yyyy-MM-dd")) {
+        await sheetDbClient.create(x, ARCHIVE_MUMSDAG_SHEET_NAME);
+        await sheetDbClient.delete("dato", x.dato, MUMSDAG_SHEET_NAME);
       }
     }
   }
 
   const dbRow = JSON.parse(
     await sheetDbClient.read({
-      sheet: TORSDAGS_TALLERKEN_SHEET_NAME,
+      sheet: MUMSDAG_SHEET_NAME,
       search: {
-        dato: thursdayLuxonDateTime.toFormat("yyyy-MM-dd"),
+        dato: onsdagLuxonDateTime.toFormat("yyyy-MM-dd"),
         single_object: true,
       },
     })
   );
 
-  const headChef = getUserIdByRowId(dbRow.hovedkok, members);
-  const assistent = getUserIdByRowId(dbRow.kokkeassistent, members);
+  const headChef = getUserByRowId(dbRow.hovedkok, members);
+  const assistent = getUserByRowId(dbRow.kokkeassistent, members);
 
-  const firstThirsdayOfTheMonth = thursdayLuxonDateTime.day <= 7;
+  const firstThirsdayOfTheMonth = onsdagLuxonDateTime.day <= 7;
 
-  // easy helper to change to SLACKBOT_TEST_CHANNEL if testing for example
-  const channelToSendTo = TORSDAGS_TALLERKEN_CHANNEL;
-
-  /**
-   * @type {(slackBolt.Block | slackBolt.KnownBlock)[]}
-   */
-  const msgBlocks = [
-    {
-      type: "header",
-      text: {
-        type: "plain_text",
-        text: "Torsdagstallerken",
-      },
-    },
-    {
-      type: "rich_text",
-      elements: [
-        {
-          type: "rich_text_section",
-          elements: [
-            {
-              type: "text",
-              text: "Så er der endnu engang tre dage til torsdagstallerken! I denne uge har vi:\n",
-            },
-          ],
-        },
-        {
-          type: "rich_text_list",
-          style: "bullet",
-          elements: [
-            {
-              type: "rich_text_section",
-              elements: [
-                {
-                  type: "emoji",
-                  name: "chef-parrot",
-                },
-                {
-                  type: "text",
-                  text: " Head Chef: ",
-                  style: {
-                    bold: true,
-                  },
-                },
-                {
-                  type: "user",
-                  user_id: headChef,
-                },
-              ],
-            },
-            {
-              type: "rich_text_section",
-              elements: [
-                {
-                  type: "emoji",
-                  name: "cook",
-                },
-                {
-                  type: "text",
-                  text: " Souschef: ",
-                  style: {
-                    bold: true,
-                  },
-                },
-                {
-                  type: "user",
-                  user_id: assistent,
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    },
+  const msgLines = [
+    "# Mumsdag",
+    "",
+    "Så er der endnu engang tre dage til mumsdag! I denne uge har vi:",
+    `- :cook: **Head Chef:** ${
+      headChef["discord-id"]
+        ? "<@" + headChef["discord-id"] + ">"
+        : "**" + headChef["navn"] + "**"
+    }`,
+    `- :cook: **Souschef:** ${
+      assistent["discord-id"]
+        ? "<@" + assistent["discord-id"] + ">"
+        : "**" + assistent["navn"] + "**"
+    }`,
   ];
 
   if (firstThirsdayOfTheMonth) {
-    msgBlocks.push(
-      {
-        type: "divider",
-      },
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: "*Husmøde*",
-        },
-      },
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: "Husk også at det er første torsdag i måneden, så medmindre andet er aftalt er der også husmøde på torsdag efter spisning",
-        },
-      }
+    msgLines.push(
+      "## Husmøde",
+      "Husk også at det er første onsdag i måneden, så medmindre andet er aftalt er der også husmøde på onsdag efter spisning"
     );
   }
 
-  msgBlocks.push(
-    {
-      type: "divider",
-    },
-    {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: "*Svar Udbedes*",
-      },
-    },
-    {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: "På denne besked må i meget gerne lave en emoji reaktion for at tilkendegive om i tænker i spiser med på torsdag. Det er fint at ændre den senere men prøv så godt du kan at have et endeligt svar på senest torsdag morgen:",
-      },
-    },
-    {
-      type: "rich_text",
-      elements: [
-        {
-          type: "rich_text_list",
-          style: "bullet",
-          elements: [
-            {
-              type: "rich_text_section",
-              elements: [
-                {
-                  type: "emoji",
-                  name: "white_check_mark",
-                },
-                {
-                  type: "text",
-                  text: ": Ja",
-                },
-              ],
-            },
-            {
-              type: "rich_text_section",
-              elements: [
-                {
-                  type: "emoji",
-                  name: "x",
-                },
-                {
-                  type: "text",
-                  text: ": Nej",
-                },
-              ],
-            },
-            {
-              type: "rich_text_section",
-              elements: [
-                {
-                  type: "emoji",
-                  name: "yes-no-may-be-so-blob",
-                },
-                {
-                  type: "text",
-                  text: ": Stadig usikker/Måske",
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    },
-    {
-      type: "section",
-      text: {
-        type: "plain_text",
-        text: "Jeg sætter også hver af disse emojis på beskeden nu så de er nemme at klikke, og så fjerner jeg mine egne reaktioner igen torsdag morgen så de ikke bliver talt med",
-      },
-    }
+  msgLines.push(
+    "## Svar Udbedes",
+    "På denne besked må i meget gerne lave en emoji reaktion for at tilkendegive om i tænker i spiser med på onsdag. Det er fint at ændre den senere men prøv så godt du kan at have et endeligt svar på senest onsdag morgen:",
+    "- :white_check_mark:: Ja",
+    "- :x:: Nej",
+    "- <a:yes_no_may_be_so_blob:1290015813608144956>: Stadig usikker/Måske",
+    "",
+    "Jeg sætter også hver af disse emojis på beskeden nu så de er nemme at klikke, og så fjerner jeg mine egne reaktioner igen onsdag morgen så de ikke bliver talt med"
   );
 
-  const reactionMessage = await sendDinnerMessage({
-    channel: channelToSendTo,
-    blocks: msgBlocks,
-    text: "Torsdagstallerken om tre dage!",
-  });
-
-  const reactionMessageTimestamp = reactionMessage.ts;
-  if (!reactionMessageTimestamp) {
-    throw new Error(
-      `Didn't get a timestamp back from the reaction message: ${JSON.stringify(
-        reactionMessage
-      )}`
-    );
-  }
-
-  const reactionMessageChannelId = reactionMessage.channel;
-  if (!reactionMessageChannelId) {
-    throw new Error(
-      `Didn't get a channel id back from the reaction message: ${JSON.stringify(
-        reactionMessage
-      )}`
-    );
-  }
+  const reactionMessage = await sendDinnerMessage(msgLines.join("\n"));
 
   // On purpose doing it serially, it's nice for the UI that it's always the same order
   // the reactions show up in
-  for (const emojiName of ["white_check_mark", "x", "yes-no-may-be-so-blob"]) {
-    await slackClient.reactions.add({
-      channel: reactionMessageChannelId,
-      timestamp: reactionMessageTimestamp,
-      name: emojiName,
-    });
+  for (const emoji of ["✅", "❌", "1290015813608144956"]) {
+    await reactionMessage.react(emoji);
   }
 }
-function getUserIdByRowId(rowId, members) {
+function getUserByRowId(rowId, members) {
   const result = members.find((x) => x.id === rowId);
   if (result === undefined) {
     throw new Error("Invalid row id for users");
   }
-  return result["slack-id"];
+  return result;
 }
 /**
  * @argument thursdayLuxonDateTime {DateTime}
@@ -615,157 +420,79 @@ export async function handleDayOfDinner(thursdayLuxonDateTime) {
     return;
   }
 
-  // easy helper to change to SLACKBOT_TEST_CHANNEL if testing for example
-  const channelToSendTo = TORSDAGS_TALLERKEN_CHANNEL;
+  const channel = await discordClient.channels.fetch(MUMSDAG_CHANNEL_ID);
 
-  const allChannels = await slackClient.conversations.list({
-    exclude_archived: true,
-  });
-
-  const targetChannelId = allChannels.channels?.find(
-    (x) => x.name === channelToSendTo
-  )?.id;
-
-  if (!targetChannelId) {
-    throw new Error(
-      `Couldn't find id of channel ${channelToSendTo} in list of all channels: ${JSON.stringify(
-        allChannels
-      )}`
-    );
+  if (channel === null || !(channel instanceof TextChannel)) {
+    throw new Error("Channel not found: " + MUMSDAG_CHANNEL_ID);
   }
 
-  const relevantMessageHistory = await slackClient.conversations.history({
-    channel: targetChannelId,
-    // latest: thursdayLuxonDateTime.plus({ days: -2 }).toSeconds(),
-    // oldest: thursdayLuxonDateTime.plus({ days: -4 }).toSeconds(),
+  // fetch channel messages in reverse chronological order
+
+  const messages = await channel.messages.fetch({
+    limit: 100,
   });
 
-  const mostRecentMessageFromUs = relevantMessageHistory.messages?.find(
-    (x) => x.user === THIS_BOT_USER_ID
-  );
-  if (!mostRecentMessageFromUs) {
-    throw new Error(
-      `No message found from us to remove reactions from: ${JSON.stringify(
-        mostRecentMessageFromUs
-      )}`
-    );
-  }
-  const { ts: mostRecentMsgTs, reactions: mostRecentMsgReactions } =
-    mostRecentMessageFromUs;
-  if (!mostRecentMsgTs || !mostRecentMsgReactions) {
-    throw new Error(
-      `Missing timestamp or reactions from most recent message from us: ${JSON.stringify(
-        mostRecentMessageFromUs
-      )}`
-    );
-  }
-
-  const usersThatHaveReacted = mostRecentMsgReactions.flatMap((x) => x.users);
-  const channelMembersResponse = await slackClient.conversations.members({
-    channel: targetChannelId,
-  });
-  const channelMembersThatHaventReacted = channelMembersResponse.members.filter(
-    (memberId) =>
-      !usersThatHaveReacted.includes(memberId) && memberId !== THIS_BOT_USER_ID
+  /**
+   * @type {Message<true> | undefined}
+   */
+  const mostRecentMessageFromUs = messages.find(
+    (x) => x.author.id === THIS_BOT_USER_ID
   );
 
-  const channelMembersOnMaybe = (
-    mostRecentMsgReactions.find((x) => x.name === "yes-no-may-be-so-blob")
-      ?.users ?? []
-  ).filter((x) => x !== THIS_BOT_USER_ID);
+  if (mostRecentMessageFromUs === undefined) {
+    throw new Error("No message found from us to remove reactions from");
+  }
 
+  const reactions = [...mostRecentMessageFromUs.reactions.cache.values()];
+  const ourReactions = reactions.filter((x) => x.me);
   await Promise.all(
-    ["white_check_mark", "x", "yes-no-may-be-so-blob"].map((emojiName) =>
-      slackClient.reactions.remove({
-        channel: targetChannelId,
-        timestamp: mostRecentMsgTs,
-        name: emojiName,
-      })
-    )
+    ourReactions.map((reaction) => reaction.users.remove(THIS_BOT_USER_ID))
   );
 
-  await sendDinnerMessage({
-    channel: channelToSendTo,
-    text: "Husk at melde tilbage om du skal med til torsdagstallerken!",
-    blocks: [
-      {
-        type: "header",
-        text: {
-          type: "plain_text",
-          text: "Torsdagstallerken i aften",
-        },
-      },
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: "Så blev det torsdag! Jeg håber i får en lækker fællesspisning, og husk at opdater jeres svar hvis noget har ændret sig. Jeg kan se der er nogle der mangler at afgive definitivt svar",
-        },
-      },
-      { type: "divider" },
-      {
-        type: "rich_text",
-        elements: [
-          {
-            type: "rich_text_list",
-            style: "bullet",
-            elements: [
-              {
-                type: "rich_text_section",
-                elements: [
-                  {
-                    type: "text",
-                    text: "Har ikke afgivet noget svar: ",
-                    style: {
-                      bold: true,
-                    },
-                  },
-                  ...(channelMembersThatHaventReacted.length <= 0
-                    ? [
-                        {
-                          type: "text",
-                          text: "Alle har afgivet mindst et svar! ",
-                        },
-                        { type: "emoji", name: "tada" },
-                      ]
-                    : richTextNaturalLanguageList(
-                        channelMembersThatHaventReacted.map((userId) => ({
-                          type: "user",
-                          user_id: userId,
-                        }))
-                      )),
-                ],
-              },
-              {
-                type: "rich_text_section",
-                elements: [
-                  {
-                    type: "text",
-                    text: "Har stemt måske og mangler at afgive endeligt svar: ",
-                    style: {
-                      bold: true,
-                    },
-                  },
-                  ...(channelMembersOnMaybe.length <= 0
-                    ? [
-                        {
-                          type: "text",
-                          text: "Alle stemmer er definitive! ",
-                        },
-                        { type: "emoji", name: "partying_face" },
-                      ]
-                    : richTextNaturalLanguageList(
-                        channelMembersOnMaybe.map((userId) => ({
-                          type: "user",
-                          user_id: userId,
-                        }))
-                      )),
-                ],
-              },
-            ],
-          },
-        ],
-      },
-    ],
-  });
+  const usersThatHaveReacted = (
+    await Promise.all(reactions.map((x) => x.users.fetch()))
+  ).flatMap((x) => [...x.values()]);
+
+  const guild = await discordClient.guilds.fetch(DISCORD_GUILD_ID);
+  const guildUsers = [...(await guild.members.fetch()).values()]
+    .map((x) => x.user)
+    .filter((x) => !x.bot && !x.system);
+
+  const guildUsersThatHaventReacted = guildUsers.filter(
+    (x) => !usersThatHaveReacted.map((y) => y.id).includes(x.id)
+  );
+
+  const maybeReaction = reactions.find(
+    (x) => x.emoji.id === "1290015813608144956"
+  );
+  if (maybeReaction === undefined) {
+    throw new Error("No maybe reaction found");
+  }
+
+  const usersWithMaybeReaction = [
+    ...(await maybeReaction.users.fetch()).values(),
+  ];
+
+  await sendDinnerMessage(
+    `
+# Mumsdag i aften
+
+Så blev det onsdag! Jeg håber i får en lækker fællesspisning, og husk at opdater jeres svar hvis noget har ændret sig. Herunder kan i se status for folk der mangler at afgive definitive svar
+
+- **Har ikke afgivet noget svar:** ${
+      guildUsersThatHaventReacted.length <= 0
+        ? "Alle har afgivet mindst et svar! :tada:"
+        : stringNaturalLanguageList(
+            guildUsersThatHaventReacted.map((user) => `<@${user.id}>`)
+          )
+    }
+- **Har stemt måske og mangler at afgive endeligt svar:** ${
+      usersWithMaybeReaction.length <= 0
+        ? "Alle stemmer er definitive! :partying_face:"
+        : stringNaturalLanguageList(
+            usersWithMaybeReaction.map((user) => `<@${user.id}>`)
+          )
+    }
+`
+  );
 }

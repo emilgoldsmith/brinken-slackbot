@@ -1,32 +1,36 @@
 import _ from "lodash";
-import slackBolt from "@slack/bolt";
 import { DateTime } from "luxon";
-import { stringNaturalLanguageList } from "./utils.js";
 import {
-  slackClient,
-  SLACKBOT_TEST_CHANNEL,
   sheetDbClient,
   BEBOERE_SHEET_NAME,
   deleteMessageActionId,
   sendBirthdayMessage,
   RUNNING_IN_PRODUCTION,
+  cacheInteraction,
+  sendMessageToChannel,
+  DISCORD_TEST_CHANNEL_ID,
+  discordClient,
+  DISCORD_TEST_CHANNEL_NAME,
+  DISCORD_GUILD_ID,
+  THIS_BOT_USER_ID,
 } from "./globals.js";
+import { ActionRowBuilder, ButtonBuilder } from "@discordjs/builders";
+import { ButtonStyle, ChannelType, PermissionsBitField } from "discord.js";
 
 /**
- * @type {[string, slackBolt.Middleware<slackBolt.SlackActionMiddlewareArgs<slackBolt.SlackAction>][]}
+ * @callback ActionlistenerCb
+ * @param {object} obj
+ * @param {import("discord.js").Interaction} obj.interaction
+ * @param {string} obj.actionValue
+ */
+
+/**
+ * @type {[string, ActionlistenerCb][]}
  */
 export const birthdayActionListeners = [
   [
     "see-birthday-schedule",
-    async ({ ack, respond }) => {
-      await ack();
-
-      const members = JSON.parse(
-        await sheetDbClient.read({
-          sheet: BEBOERE_SHEET_NAME,
-        })
-      );
-
+    async ({ interaction }) => {
       const { sortedBirthdays: sortedRelativeTo1Jan } = await getBirthdayPeople(
         ""
       );
@@ -41,74 +45,35 @@ export const birthdayActionListeners = [
         ...sortedBirthdaysNextYear,
       ];
 
-      await respond({
-        replace_original: false,
-        response_type: "ephemeral",
-        text: sortedBirthdays
-          .map((x) => `<@${x["slack-id"]}>: ${x.nextAge} år`)
-          .join(", "),
-        blocks: [
-          {
-            type: "header",
-            text: {
-              type: "plain_text",
-              text: "Næste Års Fødselsdage",
-            },
-          },
-          {
-            type: "rich_text",
-            elements: [
-              {
-                type: "rich_text_list",
-                style: "bullet",
-                elements: sortedBirthdays.map((x) => ({
-                  type: "rich_text_section",
-                  elements: [
-                    {
-                      type: "text",
-                      text: `${DateTime.fromISO(x.fødselsdag)
-                        .setLocale("da-DK")
-                        .toFormat("dd. MMMM")}: `,
-                      style: {
-                        bold: true,
-                      },
-                    },
-                    {
-                      type: "emoji",
-                      name: "flag-dk",
-                    },
-                    {
-                      type: "user",
-                      user_id: x["slack-id"],
-                    },
-                    {
-                      type: "text",
-                      text: ` bliver ${x.nextAge} år `,
-                    },
-                    {
-                      type: "emoji",
-                      name: "flag-dk",
-                    },
-                  ],
-                })),
-              },
-            ],
-          },
-          {
-            type: "actions",
-            elements: [
-              {
-                type: "button",
-                text: {
-                  type: "plain_text",
-                  text: "Skjul besked",
-                },
-                style: "danger",
-                action_id: deleteMessageActionId,
-              },
-            ],
-          },
+      await interaction.reply({
+        ephemeral: true,
+        content: `\
+# Næste Års Fødselsdage
+
+${sortedBirthdays
+  .map(
+    (x) => `\
+- :flag_dk: d. **${DateTime.fromISO(x.fødselsdag)
+      .setLocale("da-DK")
+      .toFormat("dd. MMMM")}** bliver ${
+      x["discord-id"] ? "<@" + x["discord-id"] + ">" : "**" + x["navn"] + "**"
+    } ${x.nextAge} år :flag_dk:`
+  )
+  .join("\n")}`,
+        components: [
+          new ActionRowBuilder().addComponents([
+            new ButtonBuilder()
+              .setCustomId(deleteMessageActionId)
+              .setLabel("Skjul besked")
+              .setStyle(ButtonStyle.Danger),
+          ]),
         ],
+      });
+      const reply = await interaction.fetchReply();
+      cacheInteraction({
+        timestamp: reply.createdTimestamp,
+        interaction,
+        messageId: reply.id,
       });
     },
   ],
@@ -127,9 +92,10 @@ export async function handleWeekBeforeBirthday(
     (x) => x.sortableBirthday === targetBirthdayMMDD
   );
   if (lowestBirthdayIndex === -1) {
-    await slackClient.chat.postMessage({
-      channel: SLACKBOT_TEST_CHANNEL,
-      text: "'Impossible' error occurred, couldn't find birthday person after finding birthday people",
+    await sendMessageToChannel({
+      channelId: DISCORD_TEST_CHANNEL_ID,
+      message:
+        "'Impossible' error occurred, couldn't find birthday person after finding birthday people",
     });
     return;
   }
@@ -146,8 +112,8 @@ export async function handleWeekBeforeBirthday(
   );
 
   if (responsiblePeople.length <= 0) {
-    await slackClient.chat.postMessage({
-      channel: SLACKBOT_TEST_CHANNEL,
+    await sendMessageToChannel({
+      channel: DISCORD_TEST_CHANNEL_ID,
       text: `Couldn't find any responsible people for the birthday. Sorted birthdays: ${JSON.stringify(
         sortedBirthdays
       )}`,
@@ -155,9 +121,9 @@ export async function handleWeekBeforeBirthday(
     return;
   }
 
-  const birthdayCelebrators = members.filter(
-    (m) => !birthdayPeople.map((p) => p.id).includes(m.id)
-  );
+  const birthdayCelebrators = members
+    .filter((m) => !birthdayPeople.map((p) => p.id).includes(m.id))
+    .filter((x) => x["discord-id"]);
 
   const birthdayChannelName = buildBirthdayChannelName(
     birthdayPeople,
@@ -165,118 +131,70 @@ export async function handleWeekBeforeBirthday(
     channelNameSuffix
   );
 
-  if (RUNNING_IN_PRODUCTION) {
-    const { channel: birthdayChannel } = await slackClient.conversations.create(
-      {
-        name: birthdayChannelName,
-        is_private: true,
-      }
-    );
+  /**
+   * @type string
+   */
+  let birthdayChannelId = DISCORD_TEST_CHANNEL_ID;
 
-    await slackClient.conversations.invite({
-      channel: birthdayChannel?.id,
-      users: birthdayCelebrators.map((x) => x["slack-id"]).join(","),
+  if (RUNNING_IN_PRODUCTION) {
+    const guild = await discordClient.guilds.fetch(DISCORD_GUILD_ID);
+    await guild.members.fetch();
+    const channel = await guild.channels.create({
+      type: ChannelType.GuildText,
+      name: birthdayChannelName,
+      permissionOverwrites: [
+        ...birthdayCelebrators.map((x) => ({
+          type: "member",
+          id: x["discord-id"],
+          allow: [PermissionsBitField.Flags.ViewChannel],
+        })),
+        {
+          type: "member",
+          id: THIS_BOT_USER_ID,
+          allow: [PermissionsBitField.Flags.ViewChannel],
+        },
+        {
+          type: "role",
+          id: guild.roles.everyone.id,
+          deny: [PermissionsBitField.Flags.ViewChannel],
+        },
+      ],
     });
+    birthdayChannelId = channel.id;
   }
 
   await sendBirthdayMessage({
-    channel: birthdayChannelName,
-    text: `Så blev det fødselsdagstid igen! Denne gang har vi:\n\n${birthdayPeople
-      .map((x) => `<@${x["slack-id"]}> der bliver ${x.nextAge} år gammel`)
-      .join("\n")}\n\nDe har fødselsdag om en uge ${DateTime.fromFormat(
+    channelId: birthdayChannelId,
+    message: `# :flag_dk: :flag_dk: :flag_dk: Der er fødselsdag i kollektivet! :flag_dk: :flag_dk: :flag_dk:
+
+Så blev det fødselsdagstid igen! Denne gang har vi:
+
+${birthdayPeople
+  .map(
+    (x) =>
+      `- ${
+        x["discord-id"] ? "<@" + x["discord-id"] + ">" : "**" + x["navn"] + "**"
+      } der bliver ${x.nextAge} år gammel`
+  )
+  .join("\n")}\n\nDe har fødselsdag om en uge ${DateTime.fromFormat(
       targetBirthdayMMDD,
       "MM-dd"
     )
       .setLocale("da-DK")
-      .toFormat("EEEE 'd.' dd. MMMM")}, og det er ${stringNaturalLanguageList(
-      responsiblePeople.map((x) => `<@${x["slack-id"]}>`)
-    )} der er hovedansvarlig(e) for fødselsdags morgenmad`,
-    blocks: [
-      {
-        type: "header",
-        text: {
-          type: "plain_text",
-          text: ":flag-dk::flag-dk::flag-dk:Der er fødselsdag i kollektivet!:flag-dk::flag-dk::flag-dk:",
-          emoji: true,
-        },
-      },
-      {
-        type: "rich_text",
-        elements: [
-          {
-            type: "rich_text_section",
-            elements: [
-              {
-                type: "text",
-                text: "Så blev det fødselsdagstid igen! Denne gang har vi:\n\n",
-              },
-            ],
-          },
-          {
-            type: "rich_text_list",
-            style: "bullet",
-            elements: birthdayPeople.map((x) => ({
-              type: "rich_text_section",
-              elements: [
-                {
-                  type: "emoji",
-                  name: "flag-dk",
-                },
-                {
-                  type: "user",
-                  user_id: x["slack-id"],
-                },
-                {
-                  type: "text",
-                  text: ` der bliver ${x.nextAge} år `,
-                },
-                {
-                  type: "emoji",
-                  name: "flag-dk",
-                },
-              ],
-            })),
-          },
-        ],
-      },
-      { type: "divider" },
-      {
-        type: "rich_text",
-        elements: [
-          {
-            type: "rich_text_section",
-            elements: [
-              {
-                type: "text",
-                text: `De har fødselsdag om en uge ${DateTime.fromFormat(
-                  targetBirthdayMMDD,
-                  "MM-dd"
-                )
-                  .setLocale("da-DK")
-                  .toFormat(
-                    "EEEE 'd.' dd. MMMM"
-                  )}, og de hovedansvarlige for fødselsdags morgenmad er:\n\n`,
-              },
-            ],
-          },
-          {
-            type: "rich_text_list",
-            style: "bullet",
-            elements: responsiblePeople.map((x) => ({
-              type: "rich_text_section",
-              elements: [
-                {
-                  type: "user",
-                  user_id: x["slack-id"],
-                },
-              ],
-            })),
-          },
-        ],
-      },
-    ],
+      .toFormat(
+        "EEEE 'd.' dd. MMMM"
+      )}, og de hovedansvarlige for fødselsdag morgenmad er:
+      ${responsiblePeople.map(
+        (x) =>
+          `- ${
+            x["discord-id"]
+              ? "<@" + x["discord-id"] + ">"
+              : "**" + x["navn"] + "**"
+          }`
+      )}`,
   });
 }
+
 export async function handleDayBeforeBirthday(
   targetBirthdayMMDD,
   channelNameOverride = null
@@ -296,25 +214,25 @@ export async function handleDayBeforeBirthday(
     );
   }
 
+  const guild = await discordClient.guilds.fetch(DISCORD_GUILD_ID);
+  const channels = await guild.channels.fetch();
+  const channel = channels.find(
+    (channel) => channel.name === birthdayChannelName
+  );
+
+  if (channel === undefined) {
+    await sendMessageToChannel({
+      channelId: DISCORD_TEST_CHANNEL_ID,
+      message: "Couldn't find the channel with name " + birthdayChannelName,
+    });
+    return;
+  }
+
   await sendBirthdayMessage({
-    channel: birthdayChannelName,
-    text: "Så er det i morgen der er fødselsdag <!channel>! ",
-    blocks: [
-      {
-        type: "header",
-        text: {
-          type: "plain_text",
-          text: "Fødselsdag i morgen!",
-        },
-      },
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: "<!channel>",
-        },
-      },
-    ],
+    channelId: channel.id,
+    message: `# Fødselsdag i morgen!
+
+@everyone`,
   });
 }
 
@@ -358,7 +276,7 @@ function buildBirthdayChannelName(
   channelNameSuffix
 ) {
   if (!RUNNING_IN_PRODUCTION) {
-    return SLACKBOT_TEST_CHANNEL;
+    return DISCORD_TEST_CHANNEL_NAME;
   }
   return (
     birthdayPeople.map((x) => x.navn.toLowerCase()).join("-") +

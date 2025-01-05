@@ -97,3 +97,10 @@ export function generateAllPairings(n) {
 
   return matches.map((x) => x.map((y) => y + 1));
 }
+
+export function stringifyDiscordClass(discordClass) {
+  return JSON.stringify(
+    discordClass.toJSON(),
+    (_key, value) => (typeof value === "bigint" ? value.toString() : value) // return everything else unchanged
+  );
+}
