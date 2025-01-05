@@ -15,7 +15,6 @@
     "sheetdb-node": "^0.0.12"
   },
   "scripts": {
-    "build": "corepack enable && yarn",
     "start": "node index.js",
     "test": "jest"
   },
