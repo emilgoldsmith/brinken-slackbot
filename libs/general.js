@@ -1,5 +1,5 @@
 import { DateTime } from "luxon";
-import { sendGeneralMessage } from "./globals";
+import { sendGeneralMessage } from "./globals.js";
 
 /**
  * @argument {DateTime} targetLuxonDateTime
