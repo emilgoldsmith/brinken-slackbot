@@ -189,12 +189,12 @@ console.log("Discord App Initialized And Running");
 //   .then(console.log)
 //   .then(() => discordClient.destroy())
 //   .then(() => process.exit(0));
-const guild = await discordClient.guilds.fetch(DISCORD_GUILD_ID);
-await guild.channels
-  .fetch()
-  .then(console.log)
-  .then(() => discordClient.destroy())
-  .then(() => process.exit(0));
+// const guild = await discordClient.guilds.fetch(DISCORD_GUILD_ID);
+// await guild.channels
+//   .fetch()
+//   .then(console.log)
+//   .then(() => discordClient.destroy())
+//   .then(() => process.exit(0));
 
 // await handleThreeDaysBeforeDinner(
 //   DateTime.now().set({ weekday: 4 }).plus({ week: 1 })
