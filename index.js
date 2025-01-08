@@ -180,8 +180,3 @@ if (!discordClient.isReady()) {
 setDiscordClient(discordClient);
 
 console.log("Discord App Initialized And Running");
-await guild.emojis
-  .fetch()
-  .then(console.log)
-  .then(() => discordClient.destroy())
-  .then(() => process.exit(0));
