@@ -387,7 +387,7 @@ function getUserByRowId(rowId, members) {
  * @argument thursdayLuxonDateTime {DateTime}
  */
 export async function handleDayOfDinner(thursdayLuxonDateTime) {
-  if (thursdayLuxonDateTime.weekday !== 4) {
+  if (thursdayLuxonDateTime.weekday !== 3) {
     return;
   }
 
