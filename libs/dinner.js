@@ -424,12 +424,15 @@ export async function handleDayOfDinner(thursdayLuxonDateTime) {
     await Promise.all(reactions.map((x) => x.users.fetch()))
   ).flatMap((x) => [...x.values()]);
 
+  const members = JSON.parse(
+    await sheetDbClient.read({ sheet: BEBOERE_SHEET_NAME })
+  );
   const guild = await discordClient.guilds.fetch(DISCORD_GUILD_ID);
-  const guildUsers = [...(await guild.members.fetch()).values()]
+  const guildUserMembers = [...(await guild.members.fetch()).values()]
     .map((x) => x.user)
-    .filter((x) => !x.bot && !x.system);
+    .filter((x) => members.find((y) => y["discord-id"] === x.id) !== undefined);
 
-  const guildUsersThatHaventReacted = guildUsers.filter(
+  const membersThatHaventReacted = guildUserMembers.filter(
     (x) => !usersThatHaveReacted.map((y) => y.id).includes(x.id)
   );
 
@@ -440,8 +443,12 @@ export async function handleDayOfDinner(thursdayLuxonDateTime) {
     throw new Error("No maybe reaction found");
   }
 
-  const usersWithMaybeReaction = [
-    ...(await maybeReaction.users.fetch()).values(),
+  const membersWithMaybeReaction = [
+    ...(await maybeReaction.users.fetch())
+      .values()
+      .filter(
+        (x) => members.find((y) => y["discord-id"] === x.id) !== undefined
+      ),
   ];
 
   await sendDinnerMessage(
@@ -451,17 +458,17 @@ export async function handleDayOfDinner(thursdayLuxonDateTime) {
 Så blev det onsdag! Jeg håber i får en lækker fællesspisning, og husk at opdater jeres svar hvis noget har ændret sig. Herunder kan i se status for folk der mangler at afgive definitive svar
 
 - **Har ikke afgivet noget svar:** ${
-      guildUsersThatHaventReacted.length <= 0
+      membersThatHaventReacted.length <= 0
         ? "Alle har afgivet mindst et svar! :tada:"
         : stringNaturalLanguageList(
-            guildUsersThatHaventReacted.map((user) => `<@${user.id}>`)
+            membersThatHaventReacted.map((user) => `<@${user.id}>`)
           )
     }
 - **Har stemt måske og mangler at afgive endeligt svar:** ${
-      usersWithMaybeReaction.length <= 0
+      membersWithMaybeReaction.length <= 0
         ? "Alle stemmer er definitive! :partying_face:"
         : stringNaturalLanguageList(
-            usersWithMaybeReaction.map((user) => `<@${user.id}>`)
+            membersWithMaybeReaction.map((user) => `<@${user.id}>`)
           )
     }
 `
