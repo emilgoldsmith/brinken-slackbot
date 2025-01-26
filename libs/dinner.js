@@ -444,13 +444,8 @@ export async function handleDayOfDinner(thursdayLuxonDateTime) {
   }
 
   const membersWithMaybeReaction = [
-    ...(await maybeReaction.users.fetch())
-      .values()
-      .filter(
-        (x) => members.find((y) => y["discord-id"] === x.id) !== undefined
-      ),
-  ];
-
+    ...(await maybeReaction.users.fetch()).values(),
+  ].filter((x) => members.find((y) => y["discord-id"] === x.id) !== undefined);
   await sendDinnerMessage(
     `
 # Mumsdag i aften

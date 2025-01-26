@@ -1,9 +1,9 @@
+import { DateTime } from "luxon";
 import "./index.js";
-import { DISCORD_GUILD_ID, discordClient } from "./libs/globals.js";
+import { handleDayOfDinner } from "./libs/dinner.js";
+import { discordClient } from "./libs/globals.js";
 
-const guild = await discordClient.guilds.fetch(DISCORD_GUILD_ID);
-guild.members
-  .fetch()
-  .then((x) => x.forEach((y) => console.log(y.user)))
-  .then(() => discordClient.destroy())
-  .then(() => process.exit(0));
+await handleDayOfDinner(DateTime.now().set({ weekday: 3 }));
+
+await discordClient.destroy();
+process.exit(0);
